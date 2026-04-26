@@ -1,0 +1,11 @@
+﻿credentials/
+*.json
+gcp-sa-key.json
+.env
+__pycache__/
+*.pyc
+*.pyo
+checkpoint*.json
+*.log
+.DS_Store
+Thumbs.db

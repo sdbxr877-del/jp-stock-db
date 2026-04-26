@@ -1,0 +1,128 @@
+# ============================================================
+# daily_update.yml  — jp_stock_db Phase 3.2
+# 毎日 16:30 JST (07:30 UTC) に yfinance 日次差分更新を実行
+# 完全無料 (GitHub Actions 公開リポジトリ / ubuntu-latest)
+# ============================================================
+
+name: Daily Stock Price Update
+
+on:
+  # ── スケジュール実行 ──────────────────────────────────────
+  schedule:
+    - cron: '30 7 * * 1-5'   # 07:30 UTC = 16:30 JST、月〜金のみ
+
+  # ── 手動トリガー (Stage別テスト用) ──────────────────────
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: '単体テスト ticker (例: 7203)  ← 空白で全銘柄'
+        required: false
+        default: ''
+      limit:
+        description: '先頭N銘柄のみ処理 (例: 10)  ← 空白で全銘柄'
+        required: false
+        default: ''
+      dry_run:
+        description: 'DRY RUN モード (BQ 書き込みなし)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+# ── パーミッション (最小権限原則) ─────────────────────────
+permissions:
+  contents: read
+
+jobs:
+  update-prices:
+    name: yfinance Daily Update
+    runs-on: ubuntu-latest
+    timeout-minutes: 60   # 全銘柄 4,421 件でも余裕
+
+    steps:
+      # ── 1. ソースチェックアウト ────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Python セットアップ ─────────────────────────────
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      # ── 3. 依存パッケージインストール ─────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── 4. GCP サービスアカウントキーをファイルに展開 ─────
+      #   注意: JSON を 1 行に minify して Secret に登録すること
+      #   (複数行 Secret は GitHub Secrets の masking で破損する可能性あり)
+      - name: Setup GCP credentials
+        run: |
+          echo "$GCP_SA_JSON" > /tmp/gcp-sa-key.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa-key.json" >> $GITHUB_ENV
+        env:
+          GCP_SA_JSON: ${{ secrets.GCP_SA_JSON }}
+
+      # ── 5. 構文チェック (G1) ───────────────────────────────
+      - name: Syntax check (G1)
+        run: python -m py_compile daily_update_prices.py && echo "G1: PASS"
+
+      # ── 6. Secrets 漏洩チェック (G2) ──────────────────────
+      - name: Secrets audit (G2)
+        run: |
+          hits=$(grep -nE "print.*token|print.*key|print.*secret|print.*password" daily_update_prices.py | wc -l)
+          echo "Secrets leak hits: $hits"
+          if [ "$hits" -gt 0 ]; then
+            echo "G2: FAIL — secrets が print されています"
+            exit 1
+          fi
+          echo "G2: PASS"
+
+      # ── 7. daily_update_prices.py 実行 ────────────────────
+      - name: Run daily update
+        run: |
+          # 引数の組み立て
+          ARGS=""
+
+          # workflow_dispatch の入力を参照
+          TICKER="${{ github.event.inputs.ticker }}"
+          LIMIT="${{ github.event.inputs.limit }}"
+          DRY="${{ github.event.inputs.dry_run }}"
+
+          # スケジュール実行 (inputs が空) は全銘柄 LIVE
+          if [ -n "$TICKER" ]; then
+            ARGS="$ARGS --ticker $TICKER"
+          fi
+          if [ -n "$LIMIT" ]; then
+            ARGS="$ARGS --limit $LIMIT"
+          fi
+          if [ "$DRY" = "true" ]; then
+            ARGS="$ARGS --dry"
+          fi
+
+          echo "=== 実行コマンド: python daily_update_prices.py $ARGS ==="
+          python daily_update_prices.py $ARGS 2>&1 | tee daily_update.log
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-sa-key.json
+          JQUANTS_API_KEY:  ${{ secrets.JQUANTS_API_KEY }}
+          EDINET_API_KEY:   ${{ secrets.EDINET_API_KEY }}
+
+      # ── 8. ログを Artifact として保存 ─────────────────────
+      - name: Upload log artifact
+        if: always()   # 失敗時もログを保存する
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-update-log-${{ github.run_id }}
+          path: daily_update.log
+          retention-days: 30
+
+      # ── 9. GCP 認証情報を確実に削除 ───────────────────────
+      - name: Cleanup GCP credentials
+        if: always()
+        run: rm -f /tmp/gcp-sa-key.json
