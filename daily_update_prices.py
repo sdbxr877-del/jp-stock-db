@@ -1,26 +1,39 @@
 """
-daily_update_prices.py - yfinance 譌･谺｡譬ｪ萓｡蟾ｮ蛻・峩譁ｰ (db_v0.7 / Phase 3.1)
-                        v2 / 螟ｱ謨・1 蟇ｾ蠢・
-讖溯・:
-  raw.prices 縺ｫ蟄伜惠縺励↑縺・(ticker, date) 繧・yfinance 縺九ｉ蜿門ｾ励＠霑ｽ險倥☆繧九・  豈取律 16:30 JST 諠ｳ螳・(譚ｱ險ｼ螟ｧ蠑輔￠ 15:30 + 蜿肴丐繝槭・繧ｸ繝ｳ1h)縲・
-險ｭ險亥次蜑・
-  - 螳悟・辟｡譁・(BigQuery 辟｡譁呎棧邯ｭ謖・
-  - 繝代・繝・ぅ繧ｷ繝ｧ繝ｳ繝輔ぅ繝ｫ繧ｿ蠢・・(ﾂｧ4)
-  - SELECT * 遖∵ｭ｢ (ﾂｧ4)
-  - 繧ｹ繝医Μ繝ｼ繝溘Φ繧ｰ謖ｿ蜈･遖∵ｭ｢ / load_table_from_dataframe 菴ｿ逕ｨ (ﾂｧ4)
-  - DRY RUN 縺ｯ BQ 譖ｸ縺崎ｾｼ縺ｿ繧定｡後ｏ縺ｪ縺・・    譛ｬ繧ｹ繧ｯ繝ｪ繝励ヨ縺ｯ checkpoint 繧剃ｽｿ繧上↑縺・◆繧・SR-10 閾ｪ蜍墓ｺ匁侠縲・
-縲迅2 螟画峩蜀・ｮｹ / 螟ｱ謨・1 蟇ｾ蠢懊・  v1 縺ｧ縺ｯ SCAN_DAYS=30 / NEW_TICKER_DAYS=60 縺ｮ繝溘せ繝槭ャ繝√〒縲・  raw.prices 縺ｮ譛邨ゅョ繝ｼ繧ｿ縺・30譌･莉･荳雁燕縺ｮ驫俶氛縺ｫ蟇ｾ縺励・  no_baseline_fallback 邨瑚ｷｯ縺ｧ 60譌･蜑阪°繧牙・蜿門ｾ励＠縲∵里蟄倥ョ繝ｼ繧ｿ縺ｨ驥崎､・＠縺溘・
-  v2 菫ｮ豁｣:
-  (a) SCAN_DAYS 繧・30 竊・400 縺ｫ諡｡螟ｧ (5蟷ｴ髢薙・縺・■譛霑・蟷ｴ蠑ｷ繧偵き繝舌・)縲・      縺薙ｌ縺ｫ繧医ｊ縲√＠縺ｰ繧峨￥繝・・繧ｿ譖ｴ譁ｰ縺後↑縺・釜譟・ｂ latest_date 繧貞叙繧後ｋ縲・  (b) no_baseline_fallback 邨瑚ｷｯ繧貞ｻ・ｭ｢縲Ｍatest_date=None 縺ｮ驫俶氛縺ｯ
-      reason='no_baseline_skip' 縺ｧ繧ｹ繧ｭ繝・・縺吶ｋ (驥崎､・・蜿ｯ閭ｽ諤ｧ繧堤ｵｶ縺､)縲・      譛ｬ蠖薙・譁ｰ隕城釜譟・・蛻晏屓謚募・縺ｯ initial_import.py 縺ｮ雋ｬ蜍吶→縺吶ｋ縲・
-萓晏ｭ・ initial_import.py 縺ｮ謚募・邨先棡 (raw.prices, raw.tickers)
+daily_update_prices.py - yfinance 日次株価差分更新 (db_v0.7 / Phase 3.1)
+                        v2 / 失敗31 対応
+
+機能:
+  raw.prices に存在しない (ticker, date) を yfinance から取得し追記する。
+  毎日 16:30 JST 想定 (東証大引け 15:30 + 反映マージン1h)。
+
+設計原則:
+  - 完全無料 (BigQuery 無料枠維持)
+  - パーティションフィルタ必須 (§4)
+  - SELECT * 禁止 (§4)
+  - ストリーミング挿入禁止 / load_table_from_dataframe 使用 (§4)
+  - DRY RUN は BQ 書き込みを行わない。
+    本スクリプトは checkpoint を使わないため SR-10 自動準拠。
+
+【v2 変更内容 / 失敗31 対応】
+  v1 では SCAN_DAYS=30 / NEW_TICKER_DAYS=60 のミスマッチで、
+  raw.prices の最終データが 30日以上前の銘柄に対し、
+  no_baseline_fallback 経路で 60日前から再取得し、既存データと重複した。
+
+  v2 修正:
+  (a) SCAN_DAYS を 30 → 400 に拡大 (5年間のうち最近1年強をカバー)。
+      これにより、しばらくデータ更新がない銘柄も latest_date を取れる。
+  (b) no_baseline_fallback 経路を廃止。latest_date=None の銘柄は
+      reason='no_baseline_skip' でスキップする (重複の可能性を絶つ)。
+      本当の新規銘柄の初回投入は initial_import.py の責務とする。
+
+依存: initial_import.py の投入結果 (raw.prices, raw.tickers)
 
 CLI:
-  python daily_update_prices.py --ticker 7203 --dry    # 蜊倅ｽ・DRY
-  python daily_update_prices.py --ticker 7203          # 蜊倅ｽ捺悽逡ｪ
-  python daily_update_prices.py --limit 10 --dry       # 10驫俶氛 DRY
-  python daily_update_prices.py --dry                  # 蜈ｨ驫俶氛 DRY
-  python daily_update_prices.py                        # 蜈ｨ驫俶氛譛ｬ逡ｪ
+  python daily_update_prices.py --ticker 7203 --dry    # 単体 DRY
+  python daily_update_prices.py --ticker 7203          # 単体本番
+  python daily_update_prices.py --limit 10 --dry       # 10銘柄 DRY
+  python daily_update_prices.py --dry                  # 全銘柄 DRY
+  python daily_update_prices.py                        # 全銘柄本番
 """
 
 import os
@@ -40,12 +53,12 @@ PROJECT       = "project-3eaadce9-f852-40e1-932"
 TABLE_PRICES  = f"{PROJECT}.raw.prices"
 TABLE_TICKERS = f"{PROJECT}.raw.tickers"
 
-CHUNK_SIZE      = 50    # 繝√Ε繝ｳ繧ｯ謚募・繧ｵ繧､繧ｺ (驫俶氛)
-SCAN_DAYS       = 400   # MAX(date) 蜿門ｾ玲凾縺ｮ繝代・繝・ぅ繧ｷ繝ｧ繝ｳ遽・峇 (譌･) 竊・v2: 30竊・00
-MAX_SCAN_GB     = 1.5   # 繧ｹ繧ｭ繝｣繝ｳ驥丈ｸ企剞 (v2: 1.0竊・.5 縺ｫ諡｡螟ｧ縲ヾCAN_DAYS諡｡螟ｧ縺ｫ蟇ｾ蠢・
-SLEEP_FETCH     = 0.5   # yfinance 蜻ｼ縺ｳ蜃ｺ縺鈴俣髫・(遘・
-SLEEP_CHUNK     = 1.0   # 繝√Ε繝ｳ繧ｯ謚募・髢馴囈 (遘・
-# NEW_TICKER_DAYS 蟒・ｭ｢ (v2 / 螟ｱ謨・1蟇ｾ蠢・
+CHUNK_SIZE      = 50    # チャンク投入サイズ (銘柄)
+SCAN_DAYS       = 400   # MAX(date) 取得時のパーティション範囲 (日) ← v2: 30→400
+MAX_SCAN_GB     = 1.5   # スキャン量上限 (v2: 1.0→1.5 に拡大、SCAN_DAYS拡大に対応)
+SLEEP_FETCH     = 0.5   # yfinance 呼び出し間隔 (秒)
+SLEEP_CHUNK     = 1.0   # チャンク投入間隔 (秒)
+# NEW_TICKER_DAYS 廃止 (v2 / 失敗31対応)
 
 client = bigquery.Client(project=PROJECT)
 
@@ -65,7 +78,9 @@ def get_active_tickers():
 
 def get_latest_dates():
     """
-    蜷・ticker 縺ｮ迴ｾ蝨ｨ縺ｮ MAX(date) 繧剃ｸ諡ｬ蜿門ｾ励・    繝代・繝・ぅ繧ｷ繝ｧ繝ｳ繝輔ぅ繝ｫ繧ｿ繧貞ｿ・★縺九￠縲．RY RUN 縺ｧ繧ｹ繧ｭ繝｣繝ｳ驥上ｒ遒ｺ隱阪☆繧・(ﾂｧ4 / G3)縲・    """
+    各 ticker の現在の MAX(date) を一括取得。
+    パーティションフィルタを必ずかけ、DRY RUN でスキャン量を確認する (§4 / G3)。
+    """
     sql = f"""
         SELECT ticker, MAX(`date`) AS max_date
         FROM `{TABLE_PRICES}`
@@ -80,11 +95,12 @@ def get_latest_dates():
     print(f"  [BQ DRY] get_latest_dates scan: {gb:.4f} GB")
     if gb > MAX_SCAN_GB:
         raise RuntimeError(
-            f"繧ｹ繧ｭ繝｣繝ｳ驥上′荳企剞雜・℃: {gb:.2f} GB > {MAX_SCAN_GB} GB. "
-            "SQL 繧定ｦ狗峩縺励※縺上□縺輔＞"
+            f"スキャン量が上限超過: {gb:.2f} GB > {MAX_SCAN_GB} GB. "
+            "SQL を見直してください"
         )
 
-    # 譛ｬ螳溯｡・    return {row.ticker: row.max_date for row in client.query(sql).result()}
+    # 本実行
+    return {row.ticker: row.max_date for row in client.query(sql).result()}
 
 
 def upload_chunk(dfs, dry_run=False):
@@ -105,11 +121,13 @@ def upload_chunk(dfs, dry_run=False):
 # ---------------------------------------------------------------------------
 def fetch_yfinance(code, latest_date):
     """
-    latest_date 縺ｮ鄙梧律莉･髯阪・繝・・繧ｿ繧・yfinance 縺九ｉ蜿門ｾ励・
-    v2 螟画峩: latest_date=None 縺ｮ驫俶氛縺ｯ繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ縺帙★繧ｹ繧ｭ繝・・縺吶ｋ
-            (驥崎､・・蜿ｯ閭ｽ諤ｧ繧堤ｵｶ縺､縲ょ､ｱ謨・1蟇ｾ蠢・
-            逵溘・譁ｰ隕城釜譟・・蛻晏屓謚募・縺ｯ initial_import.py 縺ｮ雋ｬ蜍吶・
-    霑斐ｊ蛟､: (DataFrame or None, reason_str)
+    latest_date の翌日以降のデータを yfinance から取得。
+
+    v2 変更: latest_date=None の銘柄はフォールバックせずスキップする
+            (重複の可能性を絶つ。失敗31対応)
+            真の新規銘柄の初回投入は initial_import.py の責務。
+
+    返り値: (DataFrame or None, reason_str)
     """
     if latest_date is None:
         return None, "no_baseline_skip"
@@ -122,7 +140,8 @@ def fetch_yfinance(code, latest_date):
     try:
         df = yf.Ticker(f"{code}.T").history(start=start.isoformat())
     except Exception as e:
-        # 萓句､悶Γ繝・そ繝ｼ繧ｸ縺ｯ type 縺ｮ縺ｿ. secret 貍乗ｴｩ髦ｲ豁｢縺ｮ縺溘ａ隧ｳ邏ｰ縺ｯ蜃ｺ蜉帙＠縺ｪ縺・        return None, f"fetch_error:{type(e).__name__}"
+        # 例外メッセージは type のみ. secret 漏洩防止のため詳細は出力しない
+        return None, f"fetch_error:{type(e).__name__}"
 
     if df.empty:
         return None, "empty_response"
@@ -130,7 +149,8 @@ def fetch_yfinance(code, latest_date):
     df = df.reset_index()
     df["date"] = pd.to_datetime(df["Date"]).dt.tz_localize(None).dt.date
 
-    # 螳牙・遲・ latest_date 莉･蜑阪・陦後ｒ遒ｺ螳溘↓髯､螟・    df = df[df["date"] > latest_date]
+    # 安全策: latest_date 以前の行を確実に除外
+    df = df[df["date"] > latest_date]
     if df.empty:
         return None, "no_new_rows"
 
@@ -155,18 +175,18 @@ def fetch_yfinance(code, latest_date):
 def run(dry_run=False, limit=None):
     mode = "DRY RUN" if dry_run else "LIVE"
     print(f"=== Daily Update Prices [{mode}] ===")
-    print(f"  螳溯｡梧凾蛻ｻ (JST): {datetime.now().isoformat(timespec='seconds')}")
+    print(f"  実行時刻 (JST): {datetime.now().isoformat(timespec='seconds')}")
 
     tickers = get_active_tickers()
     if limit:
         tickers = tickers[:limit]
-    print(f"  蟇ｾ雎｡驫俶氛: {len(tickers):,}")
+    print(f"  対象銘柄: {len(tickers):,}")
 
-    print(f"  譌｢蟄俶怙螟ｧ譌･莉倥ｒ蜿門ｾ嶺ｸｭ (繝代・繝・ぅ繧ｷ繝ｧ繝ｳ {SCAN_DAYS} 譌･)...")
+    print(f"  既存最大日付を取得中 (パーティション {SCAN_DAYS} 日)...")
     latest_dates = get_latest_dates()
     new_count = sum(1 for t in tickers if t not in latest_dates)
-    print(f"  譌｢蟄倬釜譟・ {len(latest_dates):,} / "
-          f"raw.prices 縺ｫ辟｡縺・ {new_count:,}")
+    print(f"  既存銘柄: {len(latest_dates):,} / "
+          f"raw.prices に無し: {new_count:,}")
 
     chunk_dfs    = []
     chunk_codes  = []
@@ -182,75 +202,75 @@ def run(dry_run=False, limit=None):
             chunk_dfs.append(df)
             chunk_codes.append(code)
 
-        # 騾ｲ謐励ワ繝ｼ繝医ン繝ｼ繝・(500莉ｶ豈・
+        # 進捗ハートビート (500件毎)
         if i % 500 == 0:
             print(f"  [progress] {i:>4}/{len(tickers)} processed, "
                   f"chunk_pending={len(chunk_dfs)}, new_rows={new_rows:,}")
 
-        # 繝√Ε繝ｳ繧ｯ謚募・
+        # チャンク投入
         if len(chunk_dfs) >= CHUNK_SIZE:
             rows = upload_chunk(chunk_dfs, dry_run=dry_run)
             new_rows += rows
-            tag = "DRY-謚募・" if dry_run else "謚募・"
-            print(f"  >>> {tag}: {len(chunk_codes)}驫俶氛 / {rows}陦・"
-                  f"(邏ｯ險郁｡・ {new_rows:,}, 騾ｲ謐・ {i}/{len(tickers)})")
+            tag = "DRY-投入" if dry_run else "投入"
+            print(f"  >>> {tag}: {len(chunk_codes)}銘柄 / {rows}行 "
+                  f"(累計行: {new_rows:,}, 進捗: {i}/{len(tickers)})")
             chunk_dfs   = []
             chunk_codes = []
             time.sleep(SLEEP_CHUNK)
         else:
             time.sleep(SLEEP_FETCH)
 
-    # 遶ｯ謨ｰ
+    # 端数
     if chunk_dfs:
         rows = upload_chunk(chunk_dfs, dry_run=dry_run)
         new_rows += rows
-        tag = "DRY-謚募・" if dry_run else "謚募・"
-        print(f"  >>> {tag}(遶ｯ謨ｰ): {len(chunk_codes)}驫俶氛 / {rows}陦・)
+        tag = "DRY-投入" if dry_run else "投入"
+        print(f"  >>> {tag}(端数): {len(chunk_codes)}銘柄 / {rows}行")
 
-    # 繧ｵ繝槭Μ
+    # サマリ
     print()
-    print(f"=== 螳御ｺ・[{mode}] ===")
-    print(f"  蟇ｾ雎｡驫俶氛謨ｰ: {len(tickers):,}")
-    print(f"  霑ｽ蜉陦梧焚  : {new_rows:,}")
-    print(f"  蜀・ｨｳ:")
+    print(f"=== 完了 [{mode}] ===")
+    print(f"  対象銘柄数: {len(tickers):,}")
+    print(f"  追加行数  : {new_rows:,}")
+    print(f"  内訳:")
     for reason, cnt in reason_count.most_common():
         print(f"    {reason:<28} {cnt:>6,}")
     if dry_run:
-        print(f"\n  窶ｻ DRY RUN 窶・BigQuery 縺ｸ縺ｮ謚募・縺ｯ縺励※縺・∪縺帙ｓ")
+        print(f"\n  ※ DRY RUN — BigQuery への投入はしていません")
 
 
 def run_single(ticker, dry_run=False):
     mode = "DRY" if dry_run else "LIVE"
     print(f"=== Single Test: {ticker} [{mode}] ===")
 
-    print(f"  譌｢蟄俶怙螟ｧ譌･莉倥ｒ蜿門ｾ嶺ｸｭ...")
+    print(f"  既存最大日付を取得中...")
     latest_dates = get_latest_dates()
     latest = latest_dates.get(ticker)
-    print(f"  {ticker} 縺ｮ迴ｾ蝨ｨ縺ｮ MAX(date): {latest}")
+    print(f"  {ticker} の現在の MAX(date): {latest}")
 
     df, reason = fetch_yfinance(ticker, latest)
     if df is None or df.empty:
-        print(f"  邨先棡: 繧ｹ繧ｭ繝・・ (reason={reason})")
+        print(f"  結果: スキップ (reason={reason})")
         return
 
-    print(f"  蜿門ｾ苓｡梧焚: {len(df)} (reason={reason})")
+    print(f"  取得行数: {len(df)} (reason={reason})")
     print(df.to_string(index=False))
 
     if not dry_run:
         rows = upload_chunk([df])
-        print(f"  -> BQ 謚募・: {rows} 陦・)
+        print(f"  -> BQ 投入: {rows} 行")
     else:
-        print(f"  -> DRY RUN: 謚募・縺励※縺・∪縺帙ｓ")
+        print(f"  -> DRY RUN: 投入していません")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry",    action="store_true",
-                        help="DRY RUN (BQ 譖ｸ縺崎ｾｼ縺ｿ縺ｪ縺・")
+                        help="DRY RUN (BQ 書き込みなし)")
     parser.add_argument("--limit",  type=int, default=None,
-                        help="蜈磯ｭN驫俶氛縺ｮ縺ｿ蜃ｦ逅・(蜍穂ｽ懃｢ｺ隱咲畑)")
+                        help="先頭N銘柄のみ処理 (動作確認用)")
     parser.add_argument("--ticker", type=str, default=None,
-                        help="蜊倅ｸ驫俶氛繝・せ繝・(萓・ 7203)")
+                        help="単一銘柄テスト (例: 7203)")
     args = parser.parse_args()
 
     if args.ticker:
