@@ -6,15 +6,15 @@ on:
   workflow_dispatch:
     inputs:
       ticker:
-        description: '単体テスト ticker (例: 7203)  空白で全銘柄'
+        description: 'single ticker test e.g. 7203  (blank = all)'
         required: false
         default: ''
       limit:
-        description: '先頭N銘柄のみ (例: 10)  空白で全銘柄'
+        description: 'process first N tickers e.g. 10  (blank = all)'
         required: false
         default: ''
       dry_run:
-        description: 'DRY RUN モード'
+        description: 'dry run mode (no BQ write)'
         required: false
         default: 'false'
         type: choice
@@ -36,11 +36,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud (Workload Identity)
+      - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: projects/874756684682/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
-          service_account: jp-stock-db-sa@project-3eaadce9-f852-40e1-932.iam.gserviceaccount.com
+          workload_identity_provider: 'projects/874756684682/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider'
+          service_account: 'jp-stock-db-sa@project-3eaadce9-f852-40e1-932.iam.gserviceaccount.com'
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -53,14 +53,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Syntax check (G1)
-        run: python -m py_compile daily_update_prices.py && echo "G1: PASS"
-
-      - name: Secrets audit (G2)
+      - name: Syntax check G1
         run: |
-          hits=$(grep -nE "print.*token|print.*key|print.*secret|print.*password" daily_update_prices.py | wc -l)
-          if [ "$hits" -gt 0 ]; then echo "G2: FAIL"; exit 1; fi
-          echo "G2: PASS"
+          python -m py_compile daily_update_prices.py
+          echo G1 PASS
+
+      - name: Secrets audit G2
+        run: |
+          hits=$(grep -nE 'print.*token|print.*key|print.*secret|print.*password' daily_update_prices.py | wc -l)
+          if [ "$hits" -gt 0 ]; then echo G2 FAIL; exit 1; fi
+          echo G2 PASS
 
       - name: Run daily update
         run: |
@@ -71,11 +73,11 @@ jobs:
           if [ -n "$TICKER" ]; then ARGS="$ARGS --ticker $TICKER"; fi
           if [ -n "$LIMIT" ]; then ARGS="$ARGS --limit $LIMIT"; fi
           if [ "$DRY" = "true" ]; then ARGS="$ARGS --dry"; fi
-          echo "=== 実行: python daily_update_prices.py $ARGS ==="
+          echo "running: python daily_update_prices.py $ARGS"
           python daily_update_prices.py $ARGS 2>&1 | tee daily_update.log
         env:
           JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
-          EDINET_API_KEY:  ${{ secrets.EDINET_API_KEY }}
+          EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
 
       - name: Upload log artifact
         if: always()
