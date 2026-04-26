@@ -1,4 +1,4 @@
-﻿name: Daily Stock Price Update
+name: Daily Stock Price Update
 
 on:
   schedule:
