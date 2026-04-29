@@ -1,8 +1,8 @@
 name: Daily Stock Price Update
 
 on:
-  schedule:
-    - cron: '30 7 * * 1-5'
+  # schedule:
+  #   - cron: '30 7 * * 1-5'   # Phase 3.2 凍結 (db_v0.9 / Phase 3.4 で再開判定)
   workflow_dispatch:
     inputs:
       ticker:
