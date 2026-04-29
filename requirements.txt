@@ -1,6 +1,6 @@
 # requirements.txt — jp_stock_db Phase 3.2
 # GitHub Actions / 本番環境用
-yfinance==0.2.54
+yfinance>=1.0.0,<2.0.0
 pandas>=2.0,<3.0
 google-cloud-bigquery>=3.11
 google-cloud-bigquery-storage>=2.22

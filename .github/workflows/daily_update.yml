@@ -55,12 +55,12 @@ jobs:
 
       - name: Syntax check G1
         run: |
-          python -m py_compile daily_update_prices.py
+          python -m py_compile daily_update_prices_v3.py
           echo G1 PASS
 
       - name: Secrets audit G2
         run: |
-          hits=$(grep -nE 'print.*token|print.*key|print.*secret|print.*password' daily_update_prices.py | wc -l)
+          hits=$(grep -nE 'print.*token|print.*key|print.*secret|print.*password' daily_update_prices_v3.py | wc -l)
           if [ "$hits" -gt 0 ]; then echo G2 FAIL; exit 1; fi
           echo G2 PASS
 
@@ -73,8 +73,9 @@ jobs:
           if [ -n "$TICKER" ]; then ARGS="$ARGS --ticker $TICKER"; fi
           if [ -n "$LIMIT" ]; then ARGS="$ARGS --limit $LIMIT"; fi
           if [ "$DRY" = "true" ]; then ARGS="$ARGS --dry"; fi
-          echo "running: python daily_update_prices.py $ARGS"
-          python daily_update_prices.py $ARGS 2>&1 | tee daily_update.log
+          echo "running: python daily_update_prices_v3.py $ARGS"
+          set -o pipefail
+          python daily_update_prices_v3.py $ARGS 2>&1 | tee daily_update.log
         env:
           JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
           EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
