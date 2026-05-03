@@ -1,0 +1,91 @@
+name: J-Quants Daily Update (Backfill Correction)
+
+on:
+  schedule:
+    - cron: '30 23 * * 1-5'  # UTC 23:30 平日 = JST 翌朝 08:30 (yfinance の16h後)
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'target date YYYYMMDD e.g. 20260130  (blank = 13 weeks ago)'
+        required: false
+        default: ''
+      limit:
+        description: 'process first N rows after fetch  (blank = all)'
+        required: false
+        default: ''
+      dry:
+        description: 'dry mode (fetch+staging only, skip DML)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  jquants-update:
+    name: J-Quants Backfill Correction
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: 'projects/874756684682/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider'
+          service_account: 'jp-stock-db-sa@project-3eaadce9-f852-40e1-932.iam.gserviceaccount.com'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Syntax check G1
+        run: |
+          set -euo pipefail
+          python -m py_compile jquants_update.py
+          echo G1 PASS
+
+      - name: Secrets audit G2
+        run: |
+          set -euo pipefail
+          hits=$(grep -nE 'print.*token|print.*key|print.*secret|print.*password' jquants_update.py | wc -l)
+          if [ "$hits" -gt 0 ]; then echo G2 FAIL; exit 1; fi
+          echo G2 PASS
+
+      - name: Run J-Quants update
+        run: |
+          set -euo pipefail
+          ARGS=""
+          DATE="${{ github.event.inputs.date }}"
+          LIMIT="${{ github.event.inputs.limit }}"
+          DRY="${{ github.event.inputs.dry }}"
+          if [ -n "$DATE" ]; then ARGS="$ARGS --date $DATE"; fi
+          if [ -n "$LIMIT" ]; then ARGS="$ARGS --limit $LIMIT"; fi
+          if [ "$DRY" = "true" ]; then ARGS="$ARGS --dry"; fi
+          echo "running: python jquants_update.py $ARGS"
+          python jquants_update.py $ARGS 2>&1 | tee jquants_update.log
+        env:
+          JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
+
+      - name: Upload log artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jquants-update-log-${{ github.run_id }}
+          path: jquants_update.log
+          retention-days: 30
