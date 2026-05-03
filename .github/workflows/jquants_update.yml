@@ -63,7 +63,7 @@ jobs:
       - name: Secrets audit G2
         run: |
           set -euo pipefail
-          hits=$(grep -nE 'print.*token|print.*key|print.*secret|print.*password' jquants_update.py | wc -l)
+          hits=$(grep -cE 'print.*token|print.*key|print.*secret|print.*password' jquants_update.py || true)
           if [ "$hits" -gt 0 ]; then echo G2 FAIL; exit 1; fi
           echo G2 PASS
 
