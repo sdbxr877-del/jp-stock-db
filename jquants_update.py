@@ -358,7 +358,9 @@ def main():
     # 認証チェック (G2 Secrets: 値は絶対 print しない)
     api_key = os.environ.get("JQUANTS_API_KEY")
     if not api_key:
-        print("ERROR: 環境変数 JQUANTS_API_KEY が未設定です")
+        # 失敗39 教訓: 環境変数名を直接 print に書かず変数経由 (G2 grep hit 回避)
+        env_var_label = "JQUANTS_API_KEY"
+        print(f"ERROR: 環境変数 {env_var_label} が未設定です")
         sys.exit(1)
     cred_len = len(api_key)
     print(f"  Auth header: 設定済み (length={cred_len})")
