@@ -1,0 +1,17 @@
+# Auto-normalize all text files to LF on commit
+# (failure 54 mitigation, db_v0.14)
+* text=auto eol=lf
+
+# Explicit binary file types (no normalization)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.pyc binary
+*.pyo binary
+*.db binary
+*.xlsx binary
