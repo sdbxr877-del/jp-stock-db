@@ -1,0 +1,24 @@
+# screening_config.yaml — Phase 3 スクリーニング設定(MVP v1)
+# 閾値はここだけ変更すればコード改修なしで反映される(将来 UI フィルタに直結)。
+# 値は db_v0.19 の3点確認(2026-06-13 実測)で確定済。
+
+project: "project-3eaadce9-f852-40e1-932"
+location: "asia-northeast1"   # Tokyo(raw と同一リージョン)
+
+screening:
+  # --- ハードゲート(必須通過) ---
+  min_turnover_yen: 100000000          # 20日平均売買代金の下限(= 1億円)。薄商い除外
+  allowed_markets:                     # 確認2 実測: 日本語3区分。その他/TOKYO PRO MARKET は除外
+    - "プライム"
+    - "スタンダード"
+    - "グロース"
+
+  # --- スクリーニング条件(既定値・自由に変更可) ---
+  per_max: 20.0                        # PER 上限(0 < PER <= per_max)
+  roe_min: 8.0                         # ROE 下限(%)。roe_is_percentage=true に合わせ百分率で記載
+  roe_cap: 100.0                       # ROE 上限(%)。確認3 で ±13000% 級の外れ値を確認 → 異常値ガード
+  mom_3m_min: 0.0                      # 3ヶ月リターン下限(> mom_3m_min)
+
+  # --- データ単位フラグ ---
+  roe_is_percentage: true              # 確認3 実測: roe は百分率表記(中央値7.5 = 7.5%)。
+                                       # PBR 近似は roe_scale(=0.01)で小数換算して計算
