@@ -1,8 +1,8 @@
 name: Daily Stock Price Update
 
 on:
-  # schedule:
-  #   - cron: '30 7 * * 1-5'   # Phase 3.2 凍結 (db_v0.9 / Phase 3.4 で再開判定)
+  schedule:
+    - cron: '30 7 * * 1-5'   # db_v0.20 凍結解除 (yfinance v3 安定確認済)
   workflow_dispatch:
     inputs:
       ticker:
