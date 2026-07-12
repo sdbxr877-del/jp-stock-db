@@ -130,7 +130,8 @@ def parse_csv(csv_bytes):
         (df["要素ID"].astype(str) == RD_ELEM) &
         df["コンテキストID"].astype(str).str.contains("CurrentYear", na=False) &
         ~df["コンテキストID"].astype(str).str.contains("Prior", na=False) &
-        ~df["コンテキストID"].astype(str).str.contains("Member", na=False)
+        (~df["コンテキストID"].astype(str).str.contains("Member", na=False) |
+         df["コンテキストID"].astype(str).str.contains("CorporateSharedMember", na=False))
     ]
     for _, row in rd_rows.iterrows():
         val_s = str(row.get("値", ""))
