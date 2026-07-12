@@ -99,6 +99,7 @@ def parse_csv(csv_bytes):
         if elem not in ELEMENT_MAP:
             continue
         bq_col, priority = ELEMENT_MAP[elem]
+        ctx   = str(row.get("コンテキストID", ""))
         unit  = str(row.get("ユニットID", ""))
         val_s = str(row.get("値", ""))
         if not val_s or val_s.lower() in ("nan", "-", "－", ""):
@@ -117,11 +118,16 @@ def parse_csv(csv_bytes):
         else:
             value = round(val / 1_000_000, 2)
 
-        candidates[bq_col].append((value, priority))
+        candidates[bq_col].append((value, priority, ctx))
 
     for col, cands in candidates.items():
         if cands:
-            result[col] = max(cands, key=lambda x: x[1])[0]
+            # 連結/個別解決: priority 優先 → 同点は非Member(連結)を決定論的に優先(行順依存を排除)。
+            # Memberのみの稀ケースは従来通り採用(NULL退行なし)。
+            result[col] = max(
+                cands,
+                key=lambda x: (x[1], 0 if "NonConsolidatedMember" in x[2] else 1)
+            )[0]
 
     # R&D費(研究開発活動・全社総額): 要素ID厳密一致 & CurrentYear & Prior除外 & Member除外。
     # 既存指標の df_cur/candidates 機構とは独立(既存の連結/個別解決を変えないため)。
