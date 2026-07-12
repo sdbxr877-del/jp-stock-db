@@ -18,7 +18,10 @@ WITH ranked AS (
     revenue, op_profit, net_income, eps, roe, reported_at,
     ROW_NUMBER() OVER (
       PARTITION BY ticker
-      ORDER BY reported_at DESC, fiscal_year DESC
+      ORDER BY
+        CASE WHEN source = 'yfinance' THEN 0 ELSE 1 END,  -- yfinance優先・edinetフォールバック(dual-source対策)
+        reported_at DESC,
+        fiscal_year DESC
     ) AS rn
   FROM `{{PROJECT}}.raw.financials`
   WHERE eps IS NOT NULL
