@@ -36,20 +36,19 @@ client = bigquery.Client(project=PROJECT)
 ELEMENT_MAP = {
     "jpcrp_cor:NetSalesSummaryOfBusinessResults":              ("revenue",    2),
     "jpcrp_cor:NetSales":                                       ("revenue",    1),
-    "jpigp_cor:RevenueIFRSSummaryOfBusinessResults":           ("revenue",    2),
+    "jpcrp_cor:RevenueIFRSSummaryOfBusinessResults":           ("revenue",    2),
     "jpcrp_cor:OperatingIncomeLossSummaryOfBusinessResults":   ("op_profit",  3),
     "jpcrp_cor:OperatingIncome":                               ("op_profit",  2),
     "jpcrp_cor:OrdinaryIncomeLossSummaryOfBusinessResults":    ("op_profit",  1),
-    "jpigp_cor:OperatingProfitLossIFRSSummaryOfBusinessResults": ("op_profit", 3),
     "jpcrp_cor:ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults": ("net_income", 2),
     "jpcrp_cor:ProfitLossAttributableToOwnersOfParent":        ("net_income", 1),
-    "jpigp_cor:ProfitLossAttributableToOwnersOfParentIFRSSummaryOfBusinessResults": ("net_income", 2),
+    "jpcrp_cor:ProfitLossAttributableToOwnersOfParentIFRSSummaryOfBusinessResults": ("net_income", 2),
     "jpcrp_cor:BasicEarningsLossPerSharesSummaryOfBusinessResults": ("eps",   2),
     "jpcrp_cor:BasicEarningsPerShare":                         ("eps",        1),
-    "jpigp_cor:BasicEarningsLossPerShareIFRSSummaryOfBusinessResults": ("eps", 2),
+    "jpcrp_cor:BasicEarningsLossPerShareIFRSSummaryOfBusinessResults": ("eps", 2),
     "jpcrp_cor:NetAssetsSummaryOfBusinessResults":             ("equity",     2),
     "jpcrp_cor:NetAssets":                                     ("equity",     1),
-    "jpigp_cor:EquityAttributableToOwnersOfParentIFRSSummaryOfBusinessResults": ("equity", 2),
+    "jpcrp_cor:EquityAttributableToOwnersOfParentIFRSSummaryOfBusinessResults": ("equity", 2),
 }
 
 # R&D費(研究開発費)は候補元素が単一のため ELEMENT_MAP と別立てで厳密一致抽出
@@ -144,6 +143,22 @@ def parse_csv(csv_bytes):
         if val_s and val_s.lower() not in ("nan", "-", "－", ""):
             try:
                 result["rd_expenses"] = round(float(val_s.replace(",", "")) / 1_000_000, 2)
+            except ValueError:
+                pass
+
+    # op_profit(IFRS連結・営業利益): 会社拡張namespaceのため localname suffix で厳密一致。
+    # CurrentYear & Prior除外 & Member除外。IFRS filer のみ該当し candidate-loop の op_profit を上書き。
+    op_ifrs = df[
+        df["要素ID"].astype(str).str.endswith(":OperatingProfitLossIFRSSummaryOfBusinessResults") &
+        df["コンテキストID"].astype(str).str.contains("CurrentYear", na=False) &
+        ~df["コンテキストID"].astype(str).str.contains("Prior", na=False) &
+        ~df["コンテキストID"].astype(str).str.contains("Member", na=False)
+    ]
+    for _, row in op_ifrs.iterrows():
+        val_s = str(row.get("値", ""))
+        if val_s and val_s.lower() not in ("nan", "-", "－", ""):
+            try:
+                result["op_profit"] = round(float(val_s.replace(",", "")) / 1_000_000, 2)
             except ValueError:
                 pass
 
