@@ -9,3 +9,5 @@ checkpoint*.json
 *.log
 .DS_Store
 Thumbs.db
+EDINET API.txt
+.env
