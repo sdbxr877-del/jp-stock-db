@@ -146,21 +146,52 @@ def parse_csv(csv_bytes):
             except ValueError:
                 pass
 
-    # op_profit(IFRS連結・営業利益): 会社拡張namespaceのため localname suffix で厳密一致。
-    # CurrentYear & Prior除外 & Member除外。IFRS filer のみ該当し candidate-loop の op_profit を上書き。
-    op_ifrs = df[
-        df["要素ID"].astype(str).str.endswith(":OperatingProfitLossIFRSSummaryOfBusinessResults") &
-        df["コンテキストID"].astype(str).str.contains("CurrentYear", na=False) &
-        ~df["コンテキストID"].astype(str).str.contains("Prior", na=False) &
-        ~df["コンテキストID"].astype(str).str.contains("Member", na=False)
-    ]
-    for _, row in op_ifrs.iterrows():
-        val_s = str(row.get("値", ""))
-        if val_s and val_s.lower() not in ("nan", "-", "－", ""):
-            try:
-                result["op_profit"] = round(float(val_s.replace(",", "")) / 1_000_000, 2)
-            except ValueError:
-                pass
+    # op_profit(IFRS連結・営業利益): 会社拡張/jpigp のため localname suffix で厳密一致。
+    # 優先: SummaryOfBusinessResults(製薬型) → KeyFinancialData(金融コングロ会社拡張) → jpigp_cor exact。
+    # 上位 tier ヒットで確定(下位は見ない)。CurrentYear & ~Prior & ~Member。IFRS filer のみ candidate 上書き。
+    for _op_suffix in (
+        ":OperatingProfitLossIFRSSummaryOfBusinessResults",
+        ":OperatingProfitLossIFRSKeyFinancialData",
+        ":OperatingProfitLossIFRS",
+    ):
+        op_ifrs = df[
+            df["要素ID"].astype(str).str.endswith(_op_suffix) &
+            df["コンテキストID"].astype(str).str.contains("CurrentYear", na=False) &
+            ~df["コンテキストID"].astype(str).str.contains("Prior", na=False) &
+            ~df["コンテキストID"].astype(str).str.contains("Member", na=False)
+        ]
+        _matched = False
+        for _, row in op_ifrs.iterrows():
+            val_s = str(row.get("値", ""))
+            if val_s and val_s.lower() not in ("nan", "-", "－", ""):
+                try:
+                    result["op_profit"] = round(float(val_s.replace(",", "")) / 1_000_000, 2)
+                    _matched = True
+                except ValueError:
+                    pass
+        if _matched:
+            break
+
+    # revenue フォールバック(金融コングロ型 IFRS): candidate-loop 未解決時のみ。
+    # 総収益(会社拡張 :SalesAndFinancialServicesRevenueIFRS) を純売上(:NetSalesIFRS)より優先
+    # ＝yfinance 総収益定義と dual-source 整合(6758=12,957,064)。CurrentYear & ~Prior & ~Member。
+    if result["revenue"] is None:
+        for _suffix in (":SalesAndFinancialServicesRevenueIFRS", ":NetSalesIFRS"):
+            rev_rows = df[
+                df["要素ID"].astype(str).str.endswith(_suffix) &
+                df["コンテキストID"].astype(str).str.contains("CurrentYear", na=False) &
+                ~df["コンテキストID"].astype(str).str.contains("Prior", na=False) &
+                ~df["コンテキストID"].astype(str).str.contains("Member", na=False)
+            ]
+            for _, row in rev_rows.iterrows():
+                val_s = str(row.get("値", ""))
+                if val_s and val_s.lower() not in ("nan", "-", "－", ""):
+                    try:
+                        result["revenue"] = round(float(val_s.replace(",", "")) / 1_000_000, 2)
+                    except ValueError:
+                        pass
+            if result["revenue"] is not None:
+                break
 
     return result
 
