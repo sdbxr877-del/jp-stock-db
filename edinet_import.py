@@ -146,6 +146,23 @@ def parse_csv(csv_bytes):
             except ValueError:
                 pass
 
+    # R&D費 IFRSフォールバック(4151型): jpcrp RD_ELEM が SegmentMember付きのみのとき jpigp IFRS 要素で連結R&D費を取得。
+    # primary(RD_ELEM 非Member)ヒット時はスキップ=既存不変(回帰0)。CurrentYear & ~Prior & ~Member。
+    if result["rd_expenses"] is None:
+        rd_ifrs = df[
+            (df["要素ID"].astype(str) == "jpigp_cor:ResearchAndDevelopmentExpenditureRecognizedAsExpenseDuringPeriodIFRS") &
+            df["コンテキストID"].astype(str).str.contains("CurrentYear", na=False) &
+            ~df["コンテキストID"].astype(str).str.contains("Prior", na=False) &
+            ~df["コンテキストID"].astype(str).str.contains("Member", na=False)
+        ]
+        for _, row in rd_ifrs.iterrows():
+            val_s = str(row.get("値", ""))
+            if val_s and val_s.lower() not in ("nan", "-", "－", ""):
+                try:
+                    result["rd_expenses"] = round(float(val_s.replace(",", "")) / 1_000_000, 2)
+                except ValueError:
+                    pass
+
     # op_profit(IFRS連結・営業利益): 会社拡張/jpigp のため localname suffix で厳密一致。
     # 優先: SummaryOfBusinessResults(製薬型) → KeyFinancialData(金融コングロ会社拡張) → jpigp_cor exact。
     # 上位 tier ヒットで確定(下位は見ない)。CurrentYear & ~Prior & ~Member。IFRS filer のみ candidate 上書き。
