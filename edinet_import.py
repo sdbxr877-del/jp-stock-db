@@ -120,6 +120,8 @@ def parse_csv(csv_bytes):
         candidates[bq_col].append((value, priority, ctx))
 
     for col, cands in candidates.items():
+        if col == "revenue":
+            cands = [c for c in cands if "NonConsolidatedMember" not in c[2]]
         if cands:
             # 連結/個別解決: priority 優先 → 同点は非Member(連結)を決定論的に優先(行順依存を排除)。
             # Memberのみの稀ケースは従来通り採用(NULL退行なし)。
