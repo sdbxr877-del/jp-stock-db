@@ -11,3 +11,4 @@ checkpoint*.json
 Thumbs.db
 EDINET API.txt
 .env
+tests/fixtures/
