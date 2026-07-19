@@ -128,6 +128,30 @@ def parse_csv(csv_bytes):
                 key=lambda x: (x[1], 0 if "NonConsolidatedMember" in x[2] else 1)
             )[0]
 
+    # revenue 金融フォールバック(5832銀行/462A証券型): 標準売上要素が無く revenue None のとき、
+    # 経営指標等サマリの連結(非Member)トップライン(証券=営業収益 / 銀行=経常収益)で補填。
+    # primary(candidates)ヒット時はスキップ=既存不変(回帰0)。CurrentYear & ~Prior & ~Member。上位要素ヒットで確定。
+    if result["revenue"] is None:
+        for _rev_elem in (
+            "jpcrp_cor:OperatingRevenue1SummaryOfBusinessResults",
+            "jpcrp_cor:OrdinaryIncomeSummaryOfBusinessResults",
+        ):
+            rev_fin = df[
+                (df["要素ID"].astype(str) == _rev_elem) &
+                df["コンテキストID"].astype(str).str.contains("CurrentYear", na=False) &
+                ~df["コンテキストID"].astype(str).str.contains("Prior", na=False) &
+                ~df["コンテキストID"].astype(str).str.contains("Member", na=False)
+            ]
+            for _, row in rev_fin.iterrows():
+                val_s = str(row.get("値", ""))
+                if val_s and val_s.lower() not in ("nan", "-", "－", ""):
+                    try:
+                        result["revenue"] = round(float(val_s.replace(",", "")) / 1_000_000, 2)
+                    except ValueError:
+                        pass
+            if result["revenue"] is not None:
+                break
+
     # R&D費(研究開発活動・全社総額): 要素ID厳密一致 & CurrentYear & Prior除外 & Member除外。
     # 既存指標の df_cur/candidates 機構とは独立(既存の連結/個別解決を変えないため)。
     # 検証(4183/1808/8306)で連結総額が Member なし CurrentYearDuration に単一で立つことを確認済。
