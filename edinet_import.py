@@ -119,6 +119,9 @@ def parse_csv(csv_bytes):
 
         candidates[bq_col].append((value, priority, ctx))
 
+    # revenue 最終救済用: 除外前の候補を退避(単体決算会社の NULL 退行防止)。
+    _rev_all = list(candidates["revenue"])
+
     for col, cands in candidates.items():
         if col == "revenue":
             cands = [c for c in cands if "NonConsolidatedMember" not in c[2]]
@@ -235,6 +238,15 @@ def parse_csv(csv_bytes):
                         pass
             if result["revenue"] is not None:
                 break
+
+    # revenue 最終救済(単体決算会社=4080型): 非Member候補が無く全フォールバックも不発のとき、
+    # v46 で除外した NonConsolidatedMember 候補を最後に採用する(NULL退行を防ぐ)。
+    # 5191型(Member候補のみ+IFRS連結あり)は上流のIFRSフォールバックで解決済のため到達しない。
+    if result["revenue"] is None and _rev_all:
+        result["revenue"] = max(
+            _rev_all,
+            key=lambda x: (x[1], 0 if "NonConsolidatedMember" in x[2] else 1)
+        )[0]
 
     return result
 
