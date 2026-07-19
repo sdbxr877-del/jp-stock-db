@@ -43,7 +43,7 @@ ELEMENT_MAP = {
     "jpcrp_cor:ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults": ("net_income", 2),
     "jpcrp_cor:ProfitLossAttributableToOwnersOfParent":        ("net_income", 1),
     "jpcrp_cor:ProfitLossAttributableToOwnersOfParentIFRSSummaryOfBusinessResults": ("net_income", 2),
-    "jpcrp_cor:BasicEarningsLossPerSharesSummaryOfBusinessResults": ("eps",   2),
+    "jpcrp_cor:BasicEarningsLossPerShareSummaryOfBusinessResults": ("eps",   2),
     "jpcrp_cor:BasicEarningsPerShare":                         ("eps",        1),
     "jpcrp_cor:BasicEarningsLossPerShareIFRSSummaryOfBusinessResults": ("eps", 2),
     "jpcrp_cor:NetAssetsSummaryOfBusinessResults":             ("equity",     2),
