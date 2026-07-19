@@ -423,13 +423,15 @@ def main():
                 "eps":          values["eps"],
                 "roe":          roe,
                 "rd_expenses":  values["rd_expenses"],
+                "cip":          values["cip"],
+                "avg_salary":   values["avg_salary"],
                 "reported_at":  rep_date,
                 "source":       "edinet",
                 "fetched_at":   datetime.now(timezone.utc),
             }
             ticker_records.append(record)
             nn = sum(1 for v in values.values() if v is not None)
-            print(f"  [{ticker:6s}] {fy:6s}: rev={values['revenue'] or 'None'}  op={values['op_profit'] or 'None'}  ni={values['net_income'] or 'None'} ({nn}/6)")
+            print(f"  [{ticker:6s}] {fy:6s}: rev={values['revenue'] or 'None'}  op={values['op_profit'] or 'None'}  ni={values['net_income'] or 'None'} ({nn}/8)")
             time.sleep(SLEEP_SEC)
 
         chunk_records.extend(ticker_records)
