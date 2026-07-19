@@ -248,6 +248,53 @@ def parse_csv(csv_bytes):
             key=lambda x: (x[1], 0 if "NonConsolidatedMember" in x[2] else 1)
         )[0]
 
+    # --- CIP(建設仮勘定) / 平均年間給与 取込ブロック (v49) ---
+    # 実測に基づく設計(fixture 26件で確認済):
+    #  - 連結/単体の判別は要素IDではなく ctx の NonConsolidatedMember 有無で行う。
+    #  - CIP は連結優先3段: IFRS連結 -> JGAAP連結 -> 連結ctxが存在しない場合のみ単体Member。
+    #    連結filerで単体値を採ると最大2340倍の乖離が出るため、順序は厳守すること。
+    #  - 値 0 は有効値(5476/25-3期の単体CIP=0 を実測)。falsy 判定は使わず is None で厳密判定する。
+    #  - CIP は既存の財務列と単位を揃えて百万円換算(round 2)。
+    #  - 平均給与は提出会社ベースの定義のため Member ctx が正。円単位のまま整数格納。
+    result["cip"] = None
+    result["avg_salary"] = None
+    _eid_s = df["要素ID"].astype(str)
+    _ctx_s = df["コンテキストID"].astype(str)
+    _is_cur = _ctx_s.str.contains("CurrentYearInstant", na=False)
+    _is_mem = _ctx_s.str.contains("NonConsolidatedMember", na=False)
+
+    def _pick_millions(_rows):
+        for _, _row in _rows.iterrows():
+            _val = str(_row.get("値", ""))
+            if _val and _val.lower() not in ("nan", "-", "－", ""):
+                try:
+                    return round(float(_val.replace(",", "")) / 1_000_000, 2)
+                except ValueError:
+                    pass
+        return None
+
+    _cip_elems = ("jpigp_cor:ConstructionInProgressIFRS", "jppfs_cor:ConstructionInProgress")
+    for _elem in _cip_elems:
+        _v = _pick_millions(df[(_eid_s == _elem) & _is_cur & ~_is_mem])
+        if _v is not None:
+            result["cip"] = _v
+            break
+    if result["cip"] is None:
+        for _elem in _cip_elems:
+            _v = _pick_millions(df[(_eid_s == _elem) & _is_cur & _is_mem])
+            if _v is not None:
+                result["cip"] = _v
+                break
+
+    _sal_elem = "jpcrp_cor:AverageAnnualSalaryInformationAboutReportingCompanyInformationAboutEmployees"
+    for _, _row in df[(_eid_s == _sal_elem) & _is_cur & _is_mem].iterrows():
+        _val = str(_row.get("値", ""))
+        if _val and _val.lower() not in ("nan", "-", "－", ""):
+            try:
+                result["avg_salary"] = int(float(_val.replace(",", "")))
+            except ValueError:
+                pass
+
     return result
 
 
