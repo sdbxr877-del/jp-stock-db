@@ -26,10 +26,20 @@ INSERT INTO `{{PROJECT}}.analytics.daily_metrics`
   high_52w, low_52w, pct_from_52w_high,
   turnover_20d, vol_20d, computed_at )
 WITH base AS (
+  -- 母集団ガード: マクロ系列(market='INDEX')を除外し個別株のみに固定する。
+  -- マクロ系列は土日・祝日にも値がつくため、混入すると 03 の MAX(date) が
+  -- 東証休場日へ移動し screening_candidates が空になる。
+  -- マクロ系列は C05/C06 側で raw.prices を直接参照する設計とする。
   SELECT
-    ticker, date, close, adj_close, volume
-  FROM `{{PROJECT}}.raw.prices`
-  WHERE date BETWEEN DATE_SUB(target_date, INTERVAL 400 DAY) AND target_date
+    p.ticker, p.date, p.close, p.adj_close, p.volume
+  FROM `{{PROJECT}}.raw.prices` p
+  WHERE p.date BETWEEN DATE_SUB(target_date, INTERVAL 400 DAY) AND target_date
+    AND NOT EXISTS (
+      SELECT 1
+      FROM `{{PROJECT}}.raw.tickers` t
+      WHERE t.ticker = p.ticker
+        AND t.market = 'INDEX'
+    )
 ),
 with_ret AS (
   SELECT
