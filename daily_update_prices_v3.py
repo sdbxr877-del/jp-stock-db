@@ -79,6 +79,18 @@ def get_active_tickers():
     return [row.ticker for row in client.query(sql).result()]
 
 
+def to_yf_symbol(code: str) -> str:
+    """raw.tickers.ticker を yfinance シンボルへ解決する。
+
+    東証銘柄コードは4桁の英数字(例 7203 / 130A)であり ".T" サフィックスを要する。
+    指数(^N225 等)・為替(JPY=X)・商品先物(HG=F, GC=F)・暗号資産(BTC-USD) は
+    yfinance 側のシンボルをそのまま用いるため付与しない。
+    """
+    if len(code) == 4 and code.isalnum():
+        return f"{code}.T"
+    return code
+
+
 def get_latest_dates():
     sql = f"""
         SELECT ticker, MAX(`date`) AS max_date
@@ -184,8 +196,8 @@ def fetch_yfinance_bulk(tickers_chunk, latest_dates):
         return skipped
 
     earliest_start = min(starts)
-    yf_tickers = [f"{c}.T" for c, _ in eligible]
-    yf_to_code = {f"{c}.T": c for c, _ in eligible}
+    yf_tickers = [to_yf_symbol(c) for c, _ in eligible]
+    yf_to_code = {to_yf_symbol(c): c for c, _ in eligible}
     latest_map = dict(eligible)
 
     # チャンク取得 (retry 付き)
@@ -258,7 +270,7 @@ def _fetch_single_fallback(code, latest_date):
     if start > today:
         return None, "already_up_to_date"
     try:
-        df = yf.Ticker(f"{code}.T").history(start=start.isoformat())
+        df = yf.Ticker(to_yf_symbol(code)).history(start=start.isoformat())
     except Exception as e:
         return None, f"fetch_error:{type(e).__name__}"
     out, reason = _build_record_df(code, df, latest_date)
