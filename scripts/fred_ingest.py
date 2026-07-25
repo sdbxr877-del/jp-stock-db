@@ -50,6 +50,8 @@ INDICATORS = {
     "DGS10": "US_10Y_Treasury_Yield",
     "DGS3MO": "US_3M_Treasury_Yield",
     "WALCL": "FRB_Total_Assets",
+    "ECBASSETSW": "ECB_Total_Assets",
+    "JPNASSETS": "BOJ_Total_Assets",
 }
 
 BQ_SCHEMA = [
@@ -106,10 +108,11 @@ def fetch_fred_series(series_id: str, api_key: str, days_to_fetch: int) -> pd.Da
     return pd.DataFrame(records)
 
 
-def build_master(api_key: str, days_to_fetch: int) -> pd.DataFrame:
+def build_master(api_key: str, days_to_fetch: int, only=None) -> pd.DataFrame:
     """全 series を取得し垂直統合した DataFrame を返す。"""
     frames = []
-    for series_id in INDICATORS:
+    series_ids = [s for s in INDICATORS if (only is None or s in only)]
+    for series_id in series_ids:
         df = fetch_fred_series(series_id, api_key, days_to_fetch)
         if df.empty:
             print(f"[WARNING] no valid rows: {series_id}")
@@ -128,6 +131,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="FRED -> raw.fred_indicators ingestion")
     parser.add_argument("--dry-run", action="store_true", help="BQ へ書き込まず取得結果のみ表示")
     parser.add_argument("--days", type=int, default=10, help="取得対象の遡及日数（default 10）")
+    parser.add_argument("--only", type=str, default="", help="comma separated series ids to restrict fetch (default all)")
     args = parser.parse_args()
 
     api_key = os.environ.get("FRED_API_KEY")
@@ -140,7 +144,14 @@ def main() -> int:
         return 2
 
     print(f"[INFO] start {datetime.datetime.now().isoformat()} dry_run={args.dry_run} days={args.days}")
-    master = build_master(api_key, args.days)
+    only = None
+    if args.only:
+        only = set(x.strip() for x in args.only.split(","))
+        unknown = [x for x in only if x not in INDICATORS]
+        if unknown:
+            print(f"[CRITICAL] unknown series in --only: {unknown}", file=sys.stderr)
+            return 2
+    master = build_master(api_key, args.days, only)
 
     if master.empty:
         print("[INFO] no valid records for any indicator. nothing to load.")
