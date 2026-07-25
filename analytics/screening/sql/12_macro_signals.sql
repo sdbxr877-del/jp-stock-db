@@ -1,21 +1,6 @@
--- 12_macro_signals.sql — マクロ環境シグナル統合VIEW(UI前段・VIEW・MVP v1)
---
--- 由来: phase45 C06 系の集約(統合ビュー)。UI で「今のマクロ環境」を一覧するための前段。
---   既存 analytics VIEW 3本の signal を最新1件ずつ縦持ち(long)で束ねる。
---
--- 設計方針:
---   * VIEW(analytics 派生・raw 非参照。入力VIEW側がフィルタを内包するため本VIEWに下限フィルタ不要)
---   * 新規データ源ゼロ(adr_threshold_flags / bull_steepening / fred_threshold_flags のみ参照)
---   * 粒度不整合の吸収: 各入力を「最新1行」に正規化してから縦持ち UNION ALL で束ねる
---     - adr / bull は日次時系列 → data 基準日 DESC の ROW_NUMBER で最新1行を抽出
---     - fred は indicator×latest が既に1行/系列 → HY / NFCI をそのまま行展開
---   * signal は原文保持(3値/bool を文字列化)。severity 合成は本VIEWでは行わない(単一責任)
---   * is_active: 平常状態(neutral / calm / inactive)以外を TRUE(UI 点灯抽出用)
---     - 入力 signal が NULL の行は「判定不能」→ 該当入力を出力しない(誤点灯ゼロ)
---   * no-select-star: 全列明示
---
--- 出力列: signal_key / category / as_of_date / signal / metric_value / is_active
-
+-- Macro signal panel: latest snapshot of each macro signal, unified.
+-- Sources: adr_threshold_flags (breadth), bull_steepening (yield_curve),
+-- fred_threshold_flags (credit / liquidity), tankan_signal (sentiment).
 CREATE OR REPLACE VIEW `{{PROJECT}}.analytics.macro_signals` AS
 WITH adr_latest AS (
   SELECT date AS as_of_date, adr_signal, adr_25d
@@ -44,8 +29,12 @@ fred_latest AS (
   FROM `{{PROJECT}}.analytics.fred_threshold_flags`
   WHERE signal IS NOT NULL
 ),
+tankan_latest AS (
+  SELECT sector, as_of_date, signal, di_actual, is_active
+  FROM `{{PROJECT}}.analytics.tankan_signal`
+),
 unified AS (
-  -- 騰落レシオ(breadth)
+  -- breadth
   SELECT
     'adr_25d'   AS signal_key,
     'breadth'   AS category,
@@ -57,7 +46,7 @@ unified AS (
 
   UNION ALL
 
-  -- ブル・スティープニング(yield_curve)
+  -- yield_curve
   SELECT
     'bull_steepening' AS signal_key,
     'yield_curve'     AS category,
@@ -69,7 +58,7 @@ unified AS (
 
   UNION ALL
 
-  -- FRED信用(HY) / 流動性(NFCI)
+  -- credit (HY) / liquidity (NFCI)
   SELECT
     CASE indicator_code
       WHEN 'BAMLH0A0HYM2' THEN 'credit_hy'
@@ -86,6 +75,18 @@ unified AS (
     value AS metric_value,
     (signal <> 'calm') AS is_active
   FROM fred_latest
+
+  UNION ALL
+
+  -- sentiment (TANKAN DI)
+  SELECT
+    CONCAT('tankan_', sector) AS signal_key,
+    'sentiment'               AS category,
+    as_of_date,
+    signal,
+    di_actual                 AS metric_value,
+    is_active
+  FROM tankan_latest
 )
 SELECT
   signal_key,
