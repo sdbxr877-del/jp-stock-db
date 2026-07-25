@@ -52,6 +52,8 @@ INDICATORS = {
     "WALCL": "FRB_Total_Assets",
     "ECBASSETSW": "ECB_Total_Assets",
     "JPNASSETS": "BOJ_Total_Assets",
+    "DEXJPUS": "JPY_per_USD",
+    "DEXUSEU": "USD_per_EUR",
 }
 
 BQ_SCHEMA = [
