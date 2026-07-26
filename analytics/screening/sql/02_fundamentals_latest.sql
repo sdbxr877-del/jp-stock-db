@@ -1,35 +1,36 @@
--- 02_fundamentals_latest.sql — 銘柄ごと最新財務1件を抽出(MVP v1)
+-- 02_fundamentals_latest.sql -- latest single annual financial row per ticker
 --
--- raw.financials(16,835行・partition なし)から ticker ごと最新を1件選ぶ。
--- ★確認1: period_type の実値が不明。四半期と通期が混在すると net_income 等が歪むため、
---   下の helper で実値を確認し、annual 相当値に確定したら WHERE 句を有効化すること。
+-- Pick one latest row per ticker from raw.financials (non-partitioned).
+-- period_type is confirmed all 'annual'; the WHERE clause is a defensive guard
+-- against future quarterly rows.
+-- v57 (P3): add equity / shares_outstanding / dividend_paid so downstream
+-- capital metrics (market cap / BPS / PBR / DOE) read from the same latest
+-- annual row. dividend_paid is the raw Cash Dividends Paid value (negative =
+-- cash outflow); ABS is applied downstream, not here.
 --
---   helper(実値確認・コピペ用):
---     SELECT period_type, COUNT(*) c
---     FROM `{{PROJECT}}.raw.financials`
---     GROUP BY period_type ORDER BY c DESC;
---
--- no-select-star: 列を明示。financials は非 partition のため partition filter は不要。
-
+-- no-select-star: columns are explicit. financials is non-partitioned so no
+-- partition filter is required.
 CREATE OR REPLACE TABLE `{{PROJECT}}.analytics.fundamentals_latest` AS
 WITH ranked AS (
   SELECT
     ticker, fiscal_year, period_type,
     revenue, op_profit, net_income, eps, roe, reported_at,
+    equity, shares_outstanding, dividend_paid,
     ROW_NUMBER() OVER (
       PARTITION BY ticker
       ORDER BY
-        CASE WHEN source = 'yfinance' THEN 0 ELSE 1 END,  -- yfinance優先・edinetフォールバック(dual-source対策)
+        CASE WHEN source = 'yfinance' THEN 0 ELSE 1 END,  -- prefer yfinance, edinet fallback (dual-source)
         reported_at DESC,
         fiscal_year DESC
     ) AS rn
   FROM `{{PROJECT}}.raw.financials`
   WHERE eps IS NOT NULL
-    AND period_type = 'annual'   -- 確認1 実測: 全件 annual。将来 quarterly 混入を防ぐ防御的記述
+    AND period_type = 'annual'
 )
 SELECT
   ticker, fiscal_year,
   revenue, op_profit, net_income, eps, roe, reported_at,
+  equity, shares_outstanding, dividend_paid,
   SAFE_DIVIDE(op_profit, NULLIF(revenue, 0)) AS op_margin
 FROM ranked
 WHERE rn = 1;
