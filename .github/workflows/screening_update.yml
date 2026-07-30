@@ -1,0 +1,87 @@
+name: Screening Update
+
+# Runs after "Daily Stock Price Update" succeeds so that raw.prices already holds
+# the latest trading day. Manual dispatch is available for verification and backfill.
+on:
+  workflow_run:
+    workflows: ["Daily Stock Price Update"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'target date YYYY-MM-DD (blank = latest trading date)'
+        required: false
+        default: ''
+      skip_ddl:
+        description: 'skip 00_ddl (daily_metrics already created)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  run-screening:
+    name: Screening Pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: 'projects/874756684682/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider'
+          service_account: 'jp-stock-db-sa@project-3eaadce9-f852-40e1-932.iam.gserviceaccount.com'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Syntax check G1
+        run: |
+          set -euo pipefail
+          python -m py_compile analytics/screening/run_screening.py
+          echo G1 PASS
+
+      - name: Secrets audit G2
+        run: |
+          set -euo pipefail
+          hits=$(grep -cE 'print.*token|print.*key|print.*secret|print.*password' analytics/screening/run_screening.py || true)
+          if [ "$hits" -gt 0 ]; then echo G2 FAIL; exit 1; fi
+          echo G2 PASS
+
+      - name: Run screening
+        run: |
+          set -euo pipefail
+          ARGS=""
+          TARGET_DATE="${{ github.event.inputs.target_date }}"
+          SKIP_DDL="${{ github.event.inputs.skip_ddl }}"
+          if [ -n "$TARGET_DATE" ]; then ARGS="$ARGS --target-date $TARGET_DATE"; fi
+          if [ "$SKIP_DDL" != "false" ]; then ARGS="$ARGS --skip-ddl"; fi
+          echo "running: python analytics/screening/run_screening.py $ARGS"
+          python analytics/screening/run_screening.py $ARGS 2>&1 | tee screening_update.log
+
+      - name: Upload log artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screening-update-log-${{ github.run_id }}
+          path: screening_update.log
+          retention-days: 30
