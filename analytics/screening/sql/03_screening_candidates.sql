@@ -1,15 +1,24 @@
--- 03_screening_candidates.sql — 最新営業日のスクリーニング結果(MVP v1)
+-- 03_screening_candidates.sql - screening result for the latest business day (v61 linked)
 --
--- daily_metrics(最新日)+ fundamentals_latest + tickers を結合し、
--- ハードゲート + スクリーニング条件で絞り、業種(sector_name)内相対ランクを付与する。
--- 閾値は全てクエリパラメータ(run_screening.py が screening_config.yaml から注入)。
+-- Joins daily_metrics (latest date) + fundamentals_latest + tickers, applies hard gates
+-- and screening conditions, then assigns intra-sector relative ranks.
+-- All thresholds are query parameters (run_screening.py injects them from screening_config.yaml).
 --
--- no-select-star: CTE 含め全列を明示列挙(SELECT * 不使用)。
--- partition-filter-required: daily_metrics は最新日(date=)のみ参照。
--- PER  = close / eps(eps>0)
--- PBR近似 = PER * clip(roe) * @roe_scale(恒等式 PBR=PER*ROE。roe は百分率→@roe_scale=0.01 で小数換算)
---   ※ 確認3 で roe に ±13000% 級の外れ値を確認 → clip(@roe_cap) で異常値を抑制し PBR の発散を防ぐ
-
+-- v61 change: the gate / rank / composite_score logic is untouched. A final "enriched" stage
+-- LEFT JOINs four ticker-unique sources so no row fan-out is possible:
+--   capital_metrics            (company-disclosed FY capital layer, v60 rebuild)
+--   quarterly_progress_latest  (C08, one latest Q disclosure per ticker)
+--   earnings_surprise_latest   (C12, one latest FY surprise per ticker)
+--   forecast_revisions_latest  (C13, one latest revision per ticker)
+-- Real PBR is computed here as close / bps using the SAME close as the rest of the row
+-- (daily_metrics base date), so no mixed price base date is introduced. The legacy
+-- pbr_approx column is kept for regression comparison.
+--
+-- no-select-star: every column is listed explicitly, CTEs included (SR-2).
+-- partition-filter-required: daily_metrics is read for the latest date only.
+-- PER = close / eps (eps > 0)
+-- pbr_approx = PER * clip(roe) * @roe_scale (identity PBR = PER * ROE; roe is a percentage,
+--   so @roe_scale = 0.01 converts it; @roe_cap clips outliers seen at +/-13000% level)
 CREATE OR REPLACE TABLE `{{PROJECT}}.analytics.screening_candidates` AS
 WITH latest AS (
   SELECT MAX(date) AS d FROM `{{PROJECT}}.analytics.daily_metrics`
@@ -30,7 +39,7 @@ joined AS (
     t.name, t.market, t.sector_name, t.is_active,
     f.eps, f.roe, f.op_margin, f.reported_at AS fin_reported_at,
     SAFE_DIVIDE(m.close, NULLIF(f.eps, 0)) AS per,
-    -- ROE を [-@roe_cap, @roe_cap] にクリップしてから小数換算(外れ値ガード)
+    -- clip roe to [-@roe_cap, @roe_cap] before scaling (outlier guard)
     SAFE_DIVIDE(m.close, NULLIF(f.eps, 0))
       * LEAST(GREATEST(f.roe, -@roe_cap), @roe_cap) * @roe_scale AS pbr_approx
   FROM m
@@ -49,7 +58,7 @@ gated AS (
     AND adj_close > sma75
     AND sma25 > sma75
     AND per > 0 AND per <= @per_max
-    AND roe BETWEEN @roe_min AND @roe_cap        -- 下限 + 外れ値上限ガード(確認3)
+    AND roe BETWEEN @roe_min AND @roe_cap        -- lower bound + outlier upper guard
     AND ret_3m > @mom_3m_min
 ),
 ranked AS (
@@ -61,12 +70,67 @@ ranked AS (
     PERCENT_RANK() OVER (PARTITION BY sector_name ORDER BY roe     DESC) AS rk_roe,
     PERCENT_RANK() OVER (PARTITION BY sector_name ORDER BY ret_3m  DESC) AS rk_mom
   FROM gated
+),
+cap AS (
+  SELECT
+    ticker,
+    bps, doe_pct,
+    eps AS fy_eps,
+    equity AS fy_equity,
+    reported_at AS fy_reported_at
+  FROM `{{PROJECT}}.analytics.capital_metrics`
+),
+qp AS (
+  SELECT
+    ticker,
+    disc_date AS qp_disc_date,
+    cur_per_type AS qp_per_type,
+    op_progress_pct,
+    op_progress_status
+  FROM `{{PROJECT}}.analytics.quarterly_progress_latest`
+),
+es AS (
+  SELECT
+    ticker,
+    fy_disc_date AS es_disc_date,
+    op_surprise_pct,
+    op_surprise_status
+  FROM `{{PROJECT}}.analytics.earnings_surprise_latest`
+),
+fr AS (
+  SELECT
+    ticker,
+    disc_date AS fr_disc_date,
+    op_revision_pct,
+    op_revision_status
+  FROM `{{PROJECT}}.analytics.forecast_revisions_latest`
+),
+enriched AS (
+  SELECT
+    r.ticker, r.date, r.name, r.market, r.sector_name,
+    r.close, r.per, r.pbr_approx, r.roe, r.op_margin,
+    r.ret_1m, r.ret_3m, r.ret_6m, r.pct_from_52w_high, r.turnover_20d, r.vol_20d,
+    r.fin_reported_at, r.rk_per, r.rk_roe, r.rk_mom,
+    ROUND((r.rk_per + r.rk_roe + r.rk_mom) / 3, 4) AS composite_score,  -- lower is better
+    cap.bps, cap.doe_pct, cap.fy_eps, cap.fy_equity, cap.fy_reported_at,
+    SAFE_DIVIDE(r.close, NULLIF(cap.bps, 0)) AS pbr,
+    qp.qp_disc_date, qp.qp_per_type, qp.op_progress_pct, qp.op_progress_status,
+    es.es_disc_date, es.op_surprise_pct, es.op_surprise_status,
+    fr.fr_disc_date, fr.op_revision_pct, fr.op_revision_status
+  FROM ranked r
+  LEFT JOIN cap USING (ticker)
+  LEFT JOIN qp  USING (ticker)
+  LEFT JOIN es  USING (ticker)
+  LEFT JOIN fr  USING (ticker)
 )
 SELECT
   ticker, date, name, market, sector_name,
-  close, per, pbr_approx, roe, op_margin,
+  close, per, pbr_approx, pbr, roe, op_margin,
   ret_1m, ret_3m, ret_6m, pct_from_52w_high, turnover_20d, vol_20d, fin_reported_at,
-  rk_per, rk_roe, rk_mom,
-  ROUND((rk_per + rk_roe + rk_mom) / 3, 4) AS composite_score   -- 小さいほど上位
-FROM ranked
+  rk_per, rk_roe, rk_mom, composite_score,
+  bps, doe_pct, fy_eps, fy_equity, fy_reported_at,
+  qp_disc_date, qp_per_type, op_progress_pct, op_progress_status,
+  es_disc_date, op_surprise_pct, op_surprise_status,
+  fr_disc_date, op_revision_pct, op_revision_status
+FROM enriched
 ORDER BY composite_score ASC;
