@@ -1,8 +1,10 @@
 name: J-Quants Daily Update (Backfill Correction)
 
 on:
-  schedule:
-    - cron: '30 23 * * 1-5'  # UTC 23:30 平日 = JST 翌朝 08:30 (yfinance の16h後)
+  # v67: schedule disabled. J-Quants AdjC is on a different scale than the
+  # yfinance Close series, which corrupts adj_close for 143 tickers.
+  # schedule:
+  #   - cron: '30 23 * * 1-5'  # UTC 23:30 平日 = JST 翌朝 08:30 (yfinance の16h後)
   workflow_dispatch:
     inputs:
       date:
