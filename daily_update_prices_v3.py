@@ -161,7 +161,13 @@ def _build_record_df(ticker, df_one, latest_date):
     out["low"]        = df_one["Low"].round(2).values
     out["close"]      = df_one["Close"].round(2).values
     out["volume"]     = pd.array(df_one["Volume"].values, dtype="Int64")
-    out["adj_close"]  = df_one["Close"].round(2).values
+    # Prefer the split/dividend adjusted series when it is present.
+    # yf.download(auto_adjust=False) returns an "Adj Close" column;
+    # Ticker.history() may omit it, in which case "Close" is already adjusted.
+    if "Adj Close" in df_one.columns:
+        out["adj_close"]  = df_one["Adj Close"].round(2).values
+    else:
+        out["adj_close"]  = df_one["Close"].round(2).values
     out["source"]     = "yfinance"
     out["fetched_at"] = datetime.now(timezone.utc)
     return out, "ok"
@@ -270,7 +276,8 @@ def _fetch_single_fallback(code, latest_date):
     if start > today:
         return None, "already_up_to_date"
     try:
-        df = yf.Ticker(to_yf_symbol(code)).history(start=start.isoformat())
+        df = yf.Ticker(to_yf_symbol(code)).history(
+            start=start.isoformat(), auto_adjust=False)
     except Exception as e:
         return None, f"fetch_error:{type(e).__name__}"
     out, reason = _build_record_df(code, df, latest_date)
