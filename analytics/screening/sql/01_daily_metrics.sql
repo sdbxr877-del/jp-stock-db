@@ -1,24 +1,30 @@
--- 01_daily_metrics.sql — 対象日(@target_date)1日分を冪等更新(MVP v1)
+-- 01_daily_metrics.sql - idempotent single-day update for @target_date (v70)
 --
--- 設計方針:
---   * MERGE は WHEN NOT MATCHED INSERT で partition pruning を阻害するため不使用
---     → BEGIN TRANSACTION / DELETE / INSERT / COMMIT(memory 既定)
---   * partition-filter-required: raw.prices は date 範囲を、daily_metrics は date= を明示
---   * no-select-star: 全列を明示列挙
---   * トレンド/リターン/52w高安/ボラは adj_close ベース(分割・配当の不連続を回避)
---     売買代金のみ実取引価格 close を使用
---   * SMA200 / 52w(252営業日)算出のため過去 400 暦日を読み、対象日だけ書き込む
+-- Design:
+--   * MERGE is avoided: WHEN NOT MATCHED INSERT blocks partition pruning
+--     -> BEGIN TRANSACTION / DELETE / INSERT / COMMIT
+--   * partition-filter-required: explicit date range on raw.prices, date= on daily_metrics
+--   * no-select-star: every column is listed explicitly
+--   * trend / return / 52w / volatility use adj_close (splits and dividends);
+--     turnover uses the actual traded price close
+--   * lookback of 400 calendar days covers the widest window (378 days)
 --
--- 注: 本クエリはスクリプト(DECLARE/BEGIN TRANSACTION)。dry-run はスクリプト扱いで
---     scan=0 と表示される場合がある。実コストは raw.prices の date 範囲 read(window 計算)。
-
+-- v70 change: every window is date-based (RANGE over UNIX_DATE(date)) instead of
+--   row-based (ROWS n PRECEDING / LAG n). Row-based windows shift whenever rows are
+--   inserted into or deleted from history, so past values were not reproducible.
+--   Calendar offsets below were measured on 2026-07-31 over 4,169 tickers
+--   (median calendar gap; p10 = p50 = p90 because TSE shares one calendar):
+--     LAG  21 -> 30 days     LAG  63 -> 94 days     LAG 126 -> 186 days
+--     ROWS 19 -> 28 days     ROWS 24 -> 35 days     ROWS  74 -> 109 days
+--     ROWS 199 -> 298 days   ROWS 251 -> 378 days
+--   ret_1d keeps LAG(1): "previous trading day" is row-based by definition.
+--
+-- Note: this is a script (DECLARE / BEGIN TRANSACTION). A dry-run may report scan=0.
+--       The real cost is the raw.prices date-range read for the window functions.
 DECLARE target_date DATE DEFAULT @target_date;
-
 BEGIN TRANSACTION;
-
 DELETE FROM `{{PROJECT}}.analytics.daily_metrics`
 WHERE date = target_date;
-
 INSERT INTO `{{PROJECT}}.analytics.daily_metrics`
 ( ticker, date, close, adj_close, volume,
   sma25, sma75, sma200,
@@ -26,10 +32,10 @@ INSERT INTO `{{PROJECT}}.analytics.daily_metrics`
   high_52w, low_52w, pct_from_52w_high,
   turnover_20d, vol_20d, computed_at )
 WITH base AS (
-  -- 母集団ガード: マクロ系列(market='INDEX')を除外し個別株のみに固定する。
-  -- マクロ系列は土日・祝日にも値がつくため、混入すると 03 の MAX(date) が
-  -- 東証休場日へ移動し screening_candidates が空になる。
-  -- マクロ系列は C05/C06 側で raw.prices を直接参照する設計とする。
+  -- Universe guard: exclude macro series (market='INDEX') and keep single stocks only.
+  -- Macro series carry values on weekends and holidays. If they are mixed in, MAX(date)
+  -- in 03 moves to a TSE holiday and screening_candidates becomes empty.
+  -- Macro series are read directly from raw.prices on the C05 / C06 side.
   SELECT
     p.ticker, p.date, p.close, p.adj_close, p.volume
   FROM `{{PROJECT}}.raw.prices` p
@@ -44,22 +50,23 @@ WITH base AS (
 with_ret AS (
   SELECT
     ticker, date, close, adj_close, volume,
+    UNIX_DATE(date) AS dnum,
     SAFE_DIVIDE(adj_close, LAG(adj_close) OVER (PARTITION BY ticker ORDER BY date)) - 1 AS ret_1d
   FROM base
 ),
 calc AS (
   SELECT
     ticker, date, close, adj_close, volume,
-    AVG(adj_close) OVER (PARTITION BY ticker ORDER BY date ROWS BETWEEN  24 PRECEDING AND CURRENT ROW) AS sma25,
-    AVG(adj_close) OVER (PARTITION BY ticker ORDER BY date ROWS BETWEEN  74 PRECEDING AND CURRENT ROW) AS sma75,
-    AVG(adj_close) OVER (PARTITION BY ticker ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW) AS sma200,
-    SAFE_DIVIDE(adj_close, LAG(adj_close,  21) OVER (PARTITION BY ticker ORDER BY date)) - 1 AS ret_1m,
-    SAFE_DIVIDE(adj_close, LAG(adj_close,  63) OVER (PARTITION BY ticker ORDER BY date)) - 1 AS ret_3m,
-    SAFE_DIVIDE(adj_close, LAG(adj_close, 126) OVER (PARTITION BY ticker ORDER BY date)) - 1 AS ret_6m,
-    MAX(adj_close)     OVER (PARTITION BY ticker ORDER BY date ROWS BETWEEN 251 PRECEDING AND CURRENT ROW) AS high_52w,
-    MIN(adj_close)     OVER (PARTITION BY ticker ORDER BY date ROWS BETWEEN 251 PRECEDING AND CURRENT ROW) AS low_52w,
-    AVG(close * volume) OVER (PARTITION BY ticker ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS turnover_20d,
-    STDDEV_SAMP(ret_1d) OVER (PARTITION BY ticker ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS vol_20d
+    AVG(adj_close) OVER (PARTITION BY ticker ORDER BY dnum RANGE BETWEEN  35 PRECEDING AND CURRENT ROW) AS sma25,
+    AVG(adj_close) OVER (PARTITION BY ticker ORDER BY dnum RANGE BETWEEN 109 PRECEDING AND CURRENT ROW) AS sma75,
+    AVG(adj_close) OVER (PARTITION BY ticker ORDER BY dnum RANGE BETWEEN 298 PRECEDING AND CURRENT ROW) AS sma200,
+    SAFE_DIVIDE(adj_close, LAST_VALUE(adj_close IGNORE NULLS) OVER (PARTITION BY ticker ORDER BY dnum RANGE BETWEEN UNBOUNDED PRECEDING AND  30 PRECEDING)) - 1 AS ret_1m,
+    SAFE_DIVIDE(adj_close, LAST_VALUE(adj_close IGNORE NULLS) OVER (PARTITION BY ticker ORDER BY dnum RANGE BETWEEN UNBOUNDED PRECEDING AND  94 PRECEDING)) - 1 AS ret_3m,
+    SAFE_DIVIDE(adj_close, LAST_VALUE(adj_close IGNORE NULLS) OVER (PARTITION BY ticker ORDER BY dnum RANGE BETWEEN UNBOUNDED PRECEDING AND 186 PRECEDING)) - 1 AS ret_6m,
+    MAX(adj_close)      OVER (PARTITION BY ticker ORDER BY dnum RANGE BETWEEN 378 PRECEDING AND CURRENT ROW) AS high_52w,
+    MIN(adj_close)      OVER (PARTITION BY ticker ORDER BY dnum RANGE BETWEEN 378 PRECEDING AND CURRENT ROW) AS low_52w,
+    AVG(close * volume) OVER (PARTITION BY ticker ORDER BY dnum RANGE BETWEEN  28 PRECEDING AND CURRENT ROW) AS turnover_20d,
+    STDDEV_SAMP(ret_1d) OVER (PARTITION BY ticker ORDER BY dnum RANGE BETWEEN  28 PRECEDING AND CURRENT ROW) AS vol_20d
   FROM with_ret
 )
 SELECT
@@ -72,5 +79,4 @@ SELECT
   CURRENT_TIMESTAMP() AS computed_at
 FROM calc
 WHERE date = target_date;
-
 COMMIT TRANSACTION;
