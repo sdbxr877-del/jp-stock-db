@@ -40,6 +40,24 @@
 --   consecutive rows yet must be preserved). The spike row itself still enters
 --   daily_metrics on its own target_date, because next_traded is unknown then.
 --
+-- v73 change: the jquants fallback is decided per ticker in the new pk CTE.
+--   raw.prices holds two sources and either column can be the broken one.
+--   Measured on 2026-07-31 over 2025-08-01..2026-07-31: of the 4,326 tickers that
+--   have at least one source boundary, 75 have a close that jumps at the boundary
+--   while adj_close stays flat, and 12 have the opposite. The previous uniform
+--   rule (always take close for jquants rows) was correct for the latter group
+--   only, so the former carried a 2x to 10x sawtooth through every window.
+--   pk counts how often each column deviates by more than 2x across source
+--   boundaries and keeps the quieter one. 'close' is the default, so a ticker with
+--   no boundary behaves exactly as it did in v71. The test is a sign comparison,
+--   not a magnitude, so a shorter 400-day window that drops some boundaries does
+--   not flip the result. Effect: ret_1m > 1 falls from 2,725 to 1,425 rows and
+--   ret_1m > 10 from 29 rows / 3 tickers to 28 rows / 2 tickers (6731 resolved).
+--   14 tickers deviate on both columns; 12 of them on 1 to 3 boundaries, which is
+--   a real split landing on a boundary day and is unaffected by the choice. The
+--   other two (3612, 8273) hold a stale yfinance price at a 2x and 3x offset and
+--   need a re-fetch instead; pk cannot repair them.
+--
 -- Note: this is a script (DECLARE / BEGIN TRANSACTION). A dry-run may report scan=0.
 --       The real cost is the raw.prices date-range read for the window functions.
 DECLARE target_date DATE DEFAULT @target_date;
@@ -52,19 +70,50 @@ INSERT INTO `{{PROJECT}}.analytics.daily_metrics`
   ret_1m, ret_3m, ret_6m,
   high_52w, low_52w, pct_from_52w_high,
   turnover_20d, vol_20d, computed_at )
-WITH base AS (
+WITH bd AS (
+  -- Adjacent-row view used only to locate source boundaries. Same 400-day range
+  -- as base so the two CTEs never disagree about which rows exist.
+  SELECT
+    p.ticker, p.source, p.close, p.adj_close,
+    LAG(p.source)    OVER (PARTITION BY p.ticker ORDER BY p.date) AS ps,
+    LAG(p.close)     OVER (PARTITION BY p.ticker ORDER BY p.date) AS pc,
+    LAG(p.adj_close) OVER (PARTITION BY p.ticker ORDER BY p.date) AS pa
+  FROM `{{PROJECT}}.raw.prices` p
+  WHERE p.date BETWEEN DATE_SUB(target_date, INTERVAL 400 DAY) AND target_date
+),
+pk AS (
+  -- Ratios are oriented jquants / yfinance on every boundary, so a healthy column
+  -- sits near 1.0 regardless of which side comes first. The column with fewer
+  -- deviations wins; ties go to 'adj' because yfinance rows satisfy
+  -- adj_close = close and are therefore unaffected either way.
+  SELECT
+    ticker,
+    IF(COUNTIF(ra > 2 OR ra < 0.5) <= COUNTIF(rc > 2 OR rc < 0.5), 'adj', 'close') AS pick
+  FROM (
+    SELECT
+      ticker,
+      IF(source = 'jquants', SAFE_DIVIDE(close, pc), SAFE_DIVIDE(pc, close)) AS rc,
+      IF(source = 'jquants', SAFE_DIVIDE(adj_close, pa), SAFE_DIVIDE(pa, adj_close)) AS ra
+    FROM bd
+    WHERE ps IS NOT NULL AND ps <> source
+  )
+  GROUP BY ticker
+),
+base AS (
   -- Universe guard: exclude macro series (market='INDEX') and keep single stocks only.
   -- Macro series carry values on weekends and holidays. If they are mixed in, MAX(date)
   -- in 03 moves to a TSE holiday and screening_candidates becomes empty.
   -- Macro series are read directly from raw.prices on the C05 / C06 side.
   SELECT
     p.ticker, p.date, p.close,
-    -- Fall back to the traded price for jquants rows so that a single, uniform
-    -- price definition flows into every window below. yfinance rows already
-    -- satisfy adj_close = close, so this touches only the 2,331 jquants rows.
-    IF(p.source = 'jquants', p.close, p.adj_close) AS adj_close,
+    -- Per-ticker fallback: pk decides which column survives the source boundary.
+    -- yfinance rows already satisfy adj_close = close, so this only ever changes
+    -- jquants rows. A ticker absent from pk falls back to 'close', which is the
+    -- v71 behaviour.
+    IF(p.source = 'jquants' AND IFNULL(k.pick, 'close') = 'close', p.close, p.adj_close) AS adj_close,
     p.volume
   FROM `{{PROJECT}}.raw.prices` p
+  LEFT JOIN pk k ON k.ticker = p.ticker
   WHERE p.date BETWEEN DATE_SUB(target_date, INTERVAL 400 DAY) AND target_date
     AND NOT EXISTS (
       SELECT 1
