@@ -30,6 +30,16 @@
 --   73 rows / 6 tickers to 36 rows / 5 tickers. The remaining tickers are truly
 --   unadjusted splits and are handled separately.
 --
+-- v72 change: isolated zero-volume price spikes are dropped in the clean CTE.
+--   A row is dropped when volume = 0 and its close differs by more than 10x from
+--   both the previous and the next traded close. Measured on 2026-07-31 over
+--   2025-08-01..2026-07-31: 6 rows (1326 x 5, 1349 x 1) leave the window inputs
+--   and ret_1m > 10 falls from 36 rows / 5 tickers to 29 rows / 3 tickers.
+--   Requiring both sides keeps genuine split regimes intact, because those have a
+--   traded price on one side only (7176 and 7691 are zero-volume for 53 and 51
+--   consecutive rows yet must be preserved). The spike row itself still enters
+--   daily_metrics on its own target_date, because next_traded is unknown then.
+--
 -- Note: this is a script (DECLARE / BEGIN TRANSACTION). A dry-run may report scan=0.
 --       The real cost is the raw.prices date-range read for the window functions.
 DECLARE target_date DATE DEFAULT @target_date;
@@ -63,12 +73,38 @@ WITH base AS (
         AND t.market = 'INDEX'
     )
 ),
+flag AS (
+  -- Locate the nearest traded close on each side. IF(volume > 0, ...) makes the
+  -- window skip non-traded days, so a run of zero-volume rows is bridged.
+  SELECT
+    ticker, date, close, adj_close, volume,
+    LAST_VALUE(IF(volume > 0, close, NULL) IGNORE NULLS) OVER (
+      PARTITION BY ticker ORDER BY UNIX_DATE(date)
+      RANGE BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_traded,
+    FIRST_VALUE(IF(volume > 0, close, NULL) IGNORE NULLS) OVER (
+      PARTITION BY ticker ORDER BY UNIX_DATE(date)
+      RANGE BETWEEN 1 FOLLOWING AND UNBOUNDED FOLLOWING) AS next_traded
+  FROM base
+),
+clean AS (
+  -- COALESCE keeps the 22 rows whose close is NULL: NOT of a NULL predicate
+  -- would otherwise drop them silently.
+  SELECT ticker, date, close, adj_close, volume
+  FROM flag
+  WHERE NOT COALESCE(
+    volume = 0
+    AND prev_traded IS NOT NULL
+    AND next_traded IS NOT NULL
+    AND (SAFE_DIVIDE(close, prev_traded) < 0.1 OR SAFE_DIVIDE(close, prev_traded) > 10)
+    AND (SAFE_DIVIDE(close, next_traded) < 0.1 OR SAFE_DIVIDE(close, next_traded) > 10),
+    FALSE)
+),
 with_ret AS (
   SELECT
     ticker, date, close, adj_close, volume,
     UNIX_DATE(date) AS dnum,
     SAFE_DIVIDE(adj_close, LAG(adj_close) OVER (PARTITION BY ticker ORDER BY date)) - 1 AS ret_1d
-  FROM base
+  FROM clean
 ),
 calc AS (
   SELECT
