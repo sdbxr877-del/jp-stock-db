@@ -58,15 +58,20 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile analytics/screening/run_screening.py
+          python -m py_compile analytics/screening/check_drift.py
           echo G1 PASS
 
       - name: Secrets audit G2
         run: |
           set -euo pipefail
-          hits=$(grep -cE 'print.*token|print.*key|print.*secret|print.*password' analytics/screening/run_screening.py || true)
+          hits=$(cat analytics/screening/run_screening.py analytics/screening/check_drift.py | grep -cE 'print.*token|print.*key|print.*secret|print.*password' || true)
           if [ "$hits" -gt 0 ]; then echo G2 FAIL; exit 1; fi
           echo G2 PASS
 
+      - name: Drift gate G3
+        run: |
+          set -euo pipefail
+          python analytics/screening/check_drift.py
       - name: Run screening
         run: |
           set -euo pipefail
