@@ -17,14 +17,25 @@
 --
 -- 注: flat(前日比=0)は分母分子いずれにも算入しない。
 --     上場初日等で前日比が NULL の行は dir IS NULL として除外。
+--
+-- v76 修正: market='INDEX' のマクロ系列を除外する。INDEX は土日祝にも値を持つため、
+--   除外しないと breadth に非営業日の行が生じ、ROWS BETWEEN 24 PRECEDING の
+--   25行窓が営業日25日と一致しない(実測 1,899行中 524行が土日)。
+--   市場フィルタは 03 の責務であるため、ここでは INDEX のみを除外する。
 
 CREATE OR REPLACE VIEW `{{PROJECT}}.analytics.advance_decline_ratio` AS
 WITH px AS (
-  SELECT source, ticker, date, adj_close
-  FROM `{{PROJECT}}.raw.prices`
-  WHERE date >= DATE '2000-01-01'
-    AND source IN ('yfinance', 'jquants')
-    AND adj_close IS NOT NULL
+  SELECT p.source, p.ticker, p.date, p.adj_close
+  FROM `{{PROJECT}}.raw.prices` p
+  WHERE p.date >= DATE '2000-01-01'
+    AND p.source IN ('yfinance', 'jquants')
+    AND p.adj_close IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM `{{PROJECT}}.raw.tickers` t
+      WHERE t.ticker = p.ticker
+        AND t.market = 'INDEX'
+    )
 ),
 chg AS (
   SELECT
