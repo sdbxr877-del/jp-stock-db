@@ -13,12 +13,47 @@
 --     on weekends and holidays and would shift the trading-day sequence.
 --   * Partition lower bound is explicit (partition-filter-required).
 --   * Tickers absent from raw.prices yield NULL metrics and has_price = FALSE.
+--   * v76: adj_close is normalised before use. raw.prices mixes yfinance and
+--     jquants rows, and the jquants adj_close carries a retroactive adjustment on
+--     88 tickers, so a source boundary inside the d0..d5 window would corrupt
+--     ret_1d / ret_5d. pk picks the surviving column per ticker (12 tickers
+--     resolve to 'close'). The logic mirrors 01_daily_metrics.sql.
 CREATE OR REPLACE VIEW `{{PROJECT}}.analytics.earnings_price_reaction` AS
-WITH px AS (
+WITH bd AS (
+  -- Adjacent-row view used only to locate source boundaries. Same lower bound as
+  -- px so the two CTEs never disagree about which rows exist.
+  SELECT
+    p.ticker, p.source, p.close, p.adj_close,
+    LAG(p.source)    OVER (PARTITION BY p.ticker ORDER BY p.date) AS ps,
+    LAG(p.close)     OVER (PARTITION BY p.ticker ORDER BY p.date) AS pc,
+    LAG(p.adj_close) OVER (PARTITION BY p.ticker ORDER BY p.date) AS pa
+  FROM `{{PROJECT}}.raw.prices` p
+  WHERE p.date >= DATE '2024-01-01'
+),
+pk AS (
+  -- Ratios are oriented jquants / yfinance on every boundary, so a healthy column
+  -- sits near 1.0. The column with fewer deviations wins; ties go to 'adj'.
+  SELECT
+    ticker,
+    IF(COUNTIF(ra > 2 OR ra < 0.5) <= COUNTIF(rc > 2 OR rc < 0.5), 'adj', 'close') AS pick
+  FROM (
+    SELECT
+      ticker,
+      IF(source = 'jquants', SAFE_DIVIDE(close, pc), SAFE_DIVIDE(pc, close)) AS rc,
+      IF(source = 'jquants', SAFE_DIVIDE(adj_close, pa), SAFE_DIVIDE(pa, adj_close)) AS ra
+    FROM bd
+    WHERE ps IS NOT NULL AND ps <> source
+  )
+  GROUP BY ticker
+),
+px AS (
   SELECT
     p.ticker,
     p.date,
-    p.adj_close,
+    -- Per-ticker fallback: pk decides which column survives the source boundary.
+    -- yfinance rows already satisfy adj_close = close, so this only ever changes
+    -- jquants rows. A ticker absent from pk falls back to 'close'.
+    IF(p.source = 'jquants' AND IFNULL(k.pick, 'close') = 'close', p.close, p.adj_close) AS adj_close,
     p.volume,
     ROW_NUMBER() OVER (PARTITION BY p.ticker ORDER BY p.date) AS seq,
     AVG(p.volume) OVER (
@@ -26,6 +61,8 @@ WITH px AS (
       ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
     ) AS avg_volume_20d
   FROM `{{PROJECT}}.raw.prices` p
+  LEFT JOIN pk k
+    ON k.ticker = p.ticker
   WHERE p.date >= DATE '2024-01-01'
     AND NOT EXISTS (
       SELECT 1
