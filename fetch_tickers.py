@@ -80,7 +80,7 @@ def fetch_current_rows(table):
     if scan_gb > MAX_SCAN_GB:
         raise SystemExit(f"ABORT: scan {scan_gb:.6f} GB exceeds {MAX_SCAN_GB} GB")
 
-    df = client.query(sql).result().to_dataframe()
+    df = client.query(sql).result().to_dataframe(create_bqstorage_client=False)
     print(f"  current rows fetched: {len(df)}")
     if len(df) == 0:
         raise SystemExit("ABORT: current raw.tickers is empty. Refusing to proceed.")
