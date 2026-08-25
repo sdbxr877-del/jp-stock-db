@@ -48,6 +48,26 @@
 -- NULL when cfo or cfi is missing, and flag_equity_kept is NULL when no prior FY exists.
 -- Without those two a NULL flag would read as "not a match". Measured 2026-08-25 over the
 -- 413 rows of this table: 412 have a 35 row, 86 are cf_missing, 119 have no prior FY.
+--
+-- v84 second wire-up: the gate / rank / composite_score logic is untouched. One more
+-- ticker-unique source is LEFT JOINed in the same "enriched" stage:
+--   supply_demand (C16 InstitutionFlow, 36_supply_demand.sql)
+-- Eight columns are appended: sd_px_date, is_stale, market_cap, mcap_missing,
+-- institution_flow_20d, institution_flow_1d, vol_spike20, vol_spike_missing.
+-- 50 columns -> 58 columns.
+-- Grain note: 36 returns the latest TRADED day per ticker, which is not guaranteed to be
+-- the daily_metrics base date used everywhere else in this file. sd_px_date and is_stale
+-- travel with the values so a future divergence is visible instead of silent. Measured
+-- 2026-08-25 over the 413 rows here: is_stale 0 and sd_px_date <> date 0, because the
+-- turnover gate keeps illiquid tickers out of this population.
+-- Scope note: close, turnover_20d and vol_20d are NOT taken from 36; they already arrive
+-- from 01_daily_metrics on the base date. shares_outstanding, volume, turnover_1d and
+-- days_stale are derivable from what is already here and are left out.
+-- Cost note: 36 reads daily_metrics and technicals over their full history behind a
+-- QUALIFY, so its scan does not shrink when fewer columns are selected. Measured
+-- 2026-08-25: selecting ticker alone from 36 already costs 301,830,483 bytes.
+-- vol_spike20 arrives through 36, so 34_technicals needs no separate wire-up for it.
+-- 34 (mfi14 / stoch_k_slow / stoch_d) and 32_earnings_price_reaction remain unjoined.
 CREATE OR REPLACE TABLE `{{PROJECT}}.analytics.screening_candidates` AS
 WITH latest AS (
   SELECT MAX(date) AS d FROM `{{PROJECT}}.analytics.daily_metrics`
@@ -163,6 +183,24 @@ fd AS (
     flag_jcurve_strict
   FROM `{{PROJECT}}.analytics.financial_distortion`
 ),
+sd AS (
+  -- One row per ticker: 36 keeps the latest traded day via QUALIFY ROW_NUMBER = 1.
+  -- Verified 2026-08-25: COUNT(*) equals COUNT(DISTINCT ticker) at 4488, so this CTE is
+  -- ticker-unique and cannot fan out.
+  -- Window note: vol_spike20 is a 20 TRADING DAY ROWS window, while institution_flow_20d
+  -- is built on turnover_20d, a 29 CALENDAR DAY RANGE window. They are not aligned.
+  SELECT
+    ticker,
+    px_date              AS sd_px_date,
+    is_stale,
+    market_cap,
+    mcap_missing,
+    institution_flow_20d,
+    institution_flow_1d,
+    vol_spike20,
+    vol_spike_missing
+  FROM `{{PROJECT}}.analytics.supply_demand`
+),
 enriched AS (
   SELECT
     r.ticker, r.date, r.name, r.market, r.sector_name,
@@ -179,7 +217,10 @@ enriched AS (
     tw.macd, tw.macd_signal, tw.macd_hist, tw.tw_warmup_ok,
     fd.fd_disc_date, fd.fd_cf_missing, fd.fd_has_prev_fy,
     fd.flag_jcurve_core, fd.flag_ext_funded,
-    fd.flag_equity_kept, fd.flag_jcurve_strict
+    fd.flag_equity_kept, fd.flag_jcurve_strict,
+    sd.sd_px_date, sd.is_stale, sd.market_cap, sd.mcap_missing,
+    sd.institution_flow_20d, sd.institution_flow_1d,
+    sd.vol_spike20, sd.vol_spike_missing
   FROM ranked r
   LEFT JOIN cap USING (ticker)
   LEFT JOIN qp  USING (ticker)
@@ -187,6 +228,7 @@ enriched AS (
   LEFT JOIN fr  USING (ticker)
   LEFT JOIN tw  USING (ticker)
   LEFT JOIN fd  USING (ticker)
+  LEFT JOIN sd  USING (ticker)
 )
 SELECT
   ticker, date, name, market, sector_name,
@@ -199,6 +241,8 @@ SELECT
   fr_disc_date, op_revision_pct, op_revision_status,
   rsi14_wilder, atr14_wilder_pct, macd, macd_signal, macd_hist, tw_warmup_ok,
   fd_disc_date, fd_cf_missing, fd_has_prev_fy,
-  flag_jcurve_core, flag_ext_funded, flag_equity_kept, flag_jcurve_strict
+  flag_jcurve_core, flag_ext_funded, flag_equity_kept, flag_jcurve_strict,
+  sd_px_date, is_stale, market_cap, mcap_missing,
+  institution_flow_20d, institution_flow_1d, vol_spike20, vol_spike_missing
 FROM enriched
 ORDER BY composite_score ASC;
