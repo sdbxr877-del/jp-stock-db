@@ -32,6 +32,22 @@
 -- rows of history still produces a number, but that number is not warmed up yet.
 -- Window note: technicals_wilder uses a 250 business-day ROWS window, which is NOT the
 -- calendar-day RANGE window behind turnover_20d / vol_20d in 01_daily_metrics.
+--
+-- v84 change: the gate / rank / composite_score logic is untouched. One more ticker-unique
+-- source is LEFT JOINed in the same "enriched" stage, so no row fan-out is possible:
+--   financial_distortion (C20, 35_financial_distortion.sql)
+-- Seven columns are appended: fd_disc_date, fd_cf_missing, fd_has_prev_fy,
+-- flag_jcurve_core, flag_ext_funded, flag_equity_kept, flag_jcurve_strict.
+-- 43 columns -> 50 columns.
+-- Scope note: the amount and ratio columns of 35 (fcf_proxy, cfo_margin, cash_cover,
+-- equity_ratio) are deliberately NOT carried here. The four staged flags are what C20 asks
+-- for, and the amounts overlap in grain with fy_equity, which already arrives from
+-- capital_metrics. 34_technicals and 36_supply_demand stay unjoined; each is a separate
+-- decision with its own scan.
+-- Quality note: fd_cf_missing and fd_has_prev_fy travel with the flags because every flag is
+-- NULL when cfo or cfi is missing, and flag_equity_kept is NULL when no prior FY exists.
+-- Without those two a NULL flag would read as "not a match". Measured 2026-08-25 over the
+-- 413 rows of this table: 412 have a 35 row, 86 are cf_missing, 119 have no prior FY.
 CREATE OR REPLACE TABLE `{{PROJECT}}.analytics.screening_candidates` AS
 WITH latest AS (
   SELECT MAX(date) AS d FROM `{{PROJECT}}.analytics.daily_metrics`
@@ -132,6 +148,21 @@ tw AS (
   FROM `{{PROJECT}}.analytics.technicals_wilder`
   WHERE date = (SELECT d FROM latest)
 ),
+fd AS (
+  -- One row per ticker: the latest FY disclosure (35 keeps rn = 1). Verified 2026-08-25:
+  -- COUNT(*) equals COUNT(DISTINCT ticker) at 4095, so this CTE is ticker-unique.
+  -- No date predicate is needed here; 35 is a ticker snapshot, not a daily series.
+  SELECT
+    ticker,
+    disc_date         AS fd_disc_date,
+    cf_missing        AS fd_cf_missing,
+    has_prev_fy       AS fd_has_prev_fy,
+    flag_jcurve_core,
+    flag_ext_funded,
+    flag_equity_kept,
+    flag_jcurve_strict
+  FROM `{{PROJECT}}.analytics.financial_distortion`
+),
 enriched AS (
   SELECT
     r.ticker, r.date, r.name, r.market, r.sector_name,
@@ -145,13 +176,17 @@ enriched AS (
     es.es_disc_date, es.op_surprise_pct, es.op_surprise_status,
     fr.fr_disc_date, fr.op_revision_pct, fr.op_revision_status,
     tw.rsi14_wilder, tw.atr14_wilder_pct,
-    tw.macd, tw.macd_signal, tw.macd_hist, tw.tw_warmup_ok
+    tw.macd, tw.macd_signal, tw.macd_hist, tw.tw_warmup_ok,
+    fd.fd_disc_date, fd.fd_cf_missing, fd.fd_has_prev_fy,
+    fd.flag_jcurve_core, fd.flag_ext_funded,
+    fd.flag_equity_kept, fd.flag_jcurve_strict
   FROM ranked r
   LEFT JOIN cap USING (ticker)
   LEFT JOIN qp  USING (ticker)
   LEFT JOIN es  USING (ticker)
   LEFT JOIN fr  USING (ticker)
   LEFT JOIN tw  USING (ticker)
+  LEFT JOIN fd  USING (ticker)
 )
 SELECT
   ticker, date, name, market, sector_name,
@@ -162,6 +197,8 @@ SELECT
   qp_disc_date, qp_per_type, op_progress_pct, op_progress_status,
   es_disc_date, op_surprise_pct, op_surprise_status,
   fr_disc_date, op_revision_pct, op_revision_status,
-  rsi14_wilder, atr14_wilder_pct, macd, macd_signal, macd_hist, tw_warmup_ok
+  rsi14_wilder, atr14_wilder_pct, macd, macd_signal, macd_hist, tw_warmup_ok,
+  fd_disc_date, fd_cf_missing, fd_has_prev_fy,
+  flag_jcurve_core, flag_ext_funded, flag_equity_kept, flag_jcurve_strict
 FROM enriched
 ORDER BY composite_score ASC;
