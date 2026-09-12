@@ -335,6 +335,47 @@ Claude Code が暴走または誤操作した場合:
 - 新ルールが必要になったら §3 / §5 に追記し、`project_rules_db_v1.md` 本体も同時更新
 - セッション末に handoff_db_v{N}.md を作成して状態スナップショット
 
+
+<!-- second-brain-link -->
+## §SB. ナレッジベース second-brain（全プロジェクト共通）
+
+本プロジェクトのルールの**正本は `C:\second-brain\10_rules\`** にある。
+`.claude/rules/` はそこから配布されたコピーであり、**直接編集しない**。
+
+| やること | 手順 |
+|---|---|
+| ルールを直す | `C:\second-brain\10_rules\` を編集 → `python C:\second-brain\_tools\sync_rules.py --check` → `--apply` |
+| 失敗が起きた | `C:\second-brain\20_failures\` に1件1ファイルで記録（`_templates\template-failure.md`） |
+| 再発しうる型だった | `10_rules\global\` にルール化 → `--apply` で全プロジェクトへ配布 |
+| ルールの所在を知りたい | `C:\second-brain\00_index\MOC-rules.md` |
+
+`.claude/rules/.vault_manifest.json` は同期スクリプトが管理する。手で編集しない。
+プロジェクト側でルールを直接編集すると `--check` が CONFLICT として検出する（`--pull` で vault に戻す）。
+<!-- second-brain-link -->
+
+---
+
+<!-- second-brain-skills-link -->
+## §SK. 進め方の正本 second-brain skills（全プロジェクト共通）
+
+本プロジェクトの「進め方」（承認判断・セッション運用・進行ペース）の正本は
+`C:\second-brain\skills\common\SKILL.md` と `C:\second-brain\skills\jp-stock-db\SKILL.md`。
+`.claude\skills\` への配布は `python C:\second-brain\_tools\sync_skills.py --check` → `--apply`
+で行う（`.claude` 配下はリモートセッションからは書き込めないため、配布はローカルで実行する）。
+
+本ファイルの記述と second-brain skills の Tier A/B/C は次のように対応する:
+
+| second-brain skills | 本ファイルでの対応箇所 |
+|---|---|
+| Tier A（必ず事前承認） | §9 危険操作の禁止リスト、§5.1 本番テーブルへの書込は事前承認制、§5.2 テスト実行は staging 限定 |
+| Tier B（金銭・外部発信・不可逆操作は事前確認。上記に明記の無い操作向けの一般原則） | 本ファイルには明記が無い。**§SKを正とする** |
+| Tier C（確認不要・区切りで簡潔に報告） | §3.2 一機能一バージョン、§5.3（各機能区切りで結果を提示し確認を取る）に準ずる |
+| 検証の原則（「Successを信じない」） | §3.1 と同一 |
+
+skills側の内容を更新した場合、本セクションと矛盾しないか確認すること。更新は
+`C:\second-brain\skills\` 側で行い、本ファイルは手で直接書き換えない。
+<!-- second-brain-skills-link -->
+
 ---
 
 最終更新: 2026-05-10 (db_v0.11 / handoff_db_v11.1 から生成)
