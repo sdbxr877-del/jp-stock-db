@@ -5,18 +5,32 @@ priority: critical
 paths:
   - "*.py"
 related_failures:
-  - 失敗39
+  - DB-39
 related_rules:
   - G2
   - SR-14
-last_updated: 2026-05-23
+last_updated: 2026-09-11
 applies_to_environments:
   - claude_code
   - chat_claude
   - human
+scope: global
+source_project: jp-stock-db
+vault_version: 1.0
+vault_imported: 2026-08-29
+origin_path: C:\jp-stock-db\.claude\rules\secrets\no-env-var-print.md
 ---
 
 # Secrets: 環境変数名を print 文に直書きしない
+
+<!-- portability-note -->
+> **他プロジェクトでの読み替え** — 本ルールは `second-brain` から配布されている。
+> 文中の `SR-xx` / `G-x` / `失敗NN` / `handoff_db_vNN.md` / `project_rules_db_v1.md` は
+> **発祥プロジェクトでの出自の記録**であり、参照先が自プロジェクトに存在しなくてもよい。
+> **規範・違反パターン・チェックリストはそのまま有効**。教訓の原文は
+> `C:\second-brain\20_failures\` にある。
+<!-- portability-note -->
+
 
 ## 規範
 
@@ -35,7 +49,7 @@ print.*token|print.*key|print.*secret|print.*password
 ````
 
 両 case mode(Linux grep = case-sensitive / PowerShell Select-String = case-insensitive)で
-**0 hit** を必須とする。**1 件でも hit したら誤検知判定禁止・即修正**(失敗39 教訓)。
+**0 hit** を必須とする。**1 件でも hit したら誤検知判定禁止・即修正**(DB-39 教訓)。
 
 ### 対象環境変数(本ルール作成時点)
 
@@ -50,13 +64,13 @@ print.*token|print.*key|print.*secret|print.*password
 
 ## 違反パターン(検出すべきコード)
 
-### Pattern 1: 環境変数名リテラルを print 文に直書き(失敗39 直接型)
+### Pattern 1: 環境変数名リテラルを print 文に直書き(DB-39 直接型)
 
 ```python
 # 違反例: jquants_test_fetch.py:94 (修正前) 相当
 import os
 print(f"JQUANTS_API_KEY is set: {bool(os.getenv('JQUANTS_API_KEY'))}")  # ❌
-# G2 grep "print.*key" (両 case mode) に hit。失敗39 (2026-04-29) の事故箇所
+# G2 grep "print.*key" (両 case mode) に hit。DB-39 (2026-04-29) の事故箇所
 ```
 
 ### Pattern 2: print を避けて logger.* / sys.stderr に変える(grep 抜け道の悪用)
@@ -81,19 +95,19 @@ print(f"Using API key: {api_key}")  # ❌❌ 値自体が標準出力 / GHA log 
 # Pattern 1 より深刻。CI ログ・トラブルシュート出力経由で Secret 自体が永続記録される
 ```
 
-### Pattern 4: G2 grep hit を「誤検知」と独断判定(失敗39 真因)
+### Pattern 4: G2 grep hit を「誤検知」と独断判定(DB-39 真因)
 
 行動パターンとしての違反:
 - G2 監査で 1 件 hit
 - 「変数名なので実害なし」と独断判定
 - 修正せずに commit / push
-- → GHA 上で G2 ステップが FAIL し workflow 全停止(失敗39 そのもの)
+- → GHA 上で G2 ステップが FAIL し workflow 全停止(DB-39 そのもの)
 
 → `project_rules_db_v1.md §3 db_v0.10 強化`「1 件でも hit したら必ず修正」違反。
 
 ## 正しい実装パターン
 
-### Pattern A: 環境変数名を変数経由化(失敗39 修正例の標準形)
+### Pattern A: 環境変数名を変数経由化(DB-39 修正例の標準形)
 
 ```python
 import os
@@ -133,14 +147,14 @@ G2 監査(`project_rules_db_v1.md §3` の grep)で hit した場合:
 1. **合法ヒットリストとの照合**: `handoff_db_v11_1.md §3.3` の最新リストに該当するか確認
    - 合法 hit の例: G2 監査ロジック自体を書いている行(`patch_daily_yml_v3.py:30, 31, 89` 等)
 2. 合法 hit の場合: そのまま継続(リストに**新規追加が必要かは別判断**で handoff に記録)
-3. 非合法 hit の場合: **即修正**(誤検知判定禁止・失敗39 教訓)
+3. 非合法 hit の場合: **即修正**(誤検知判定禁止・DB-39 教訓)
 4. 修正後、両 case mode(Linux grep + PowerShell Select-String)で再検査し 0 hit 確認
 
 `don't ask again` 系の選択肢で監査をスキップすることは `project_rules_db_v1.md §9` 原則違反。
 
 ## 関連過去教訓
 
-### 失敗39(本ルール作成の直接動機)
+### DB-39(本ルール作成の直接動機)
 
 - **発生**: db_v0.10 セッション中(2026-04-29 頃)
 - **直接原因**: `jquants_test_fetch.py:94` および `jquants_update.py:361` で
@@ -164,7 +178,7 @@ G2 監査(`project_rules_db_v1.md §3` の grep)で hit した場合:
 
 **重要**: 上記は **2026-05-10 時点のスナップショット**であり、最新は
 `handoff_db_v11_1.md §3.3` の合法ヒットリストを参照すること。
-本ルールファイル側にリストを複製すると失敗53 同型(現状確認漏れ)のリスクが生じるため、
+本ルールファイル側にリストを複製するとDB-53 同型(現状確認漏れ)のリスクが生じるため、
 **リスト本体は handoff を SSOT とし、本ルールでは複製しない**。
 
 ## レビュー時のチェックリスト
@@ -184,10 +198,10 @@ G2 監査(`project_rules_db_v1.md §3` の grep)で hit した場合:
 
 | 同型構造 | 関連失敗 | 参照ルール |
 |---|---|---|
-| 本実行前の安全弁不足(DRY RUN なし) | 失敗41(BQ 全スキャン課金) | `.claude/rules/bq/dry-run-required.md` |
-| テスト・debug 出力が本番に漏出 | 失敗43(本番テーブル汚染) | `.claude/rules/bq/staging-only-tests.md` |
-| 環境差検証漏れ(Linux と Windows の挙動差) | 失敗54(CRLF/LF) | `handoff_db_v13.md §4 失敗54` |
-| 既存状態を確認せずに「推奨」を実装 | 失敗53(handoff 推奨の現状確認漏れ) | `handoff_db_v13.md §4 失敗53` |
+| 本実行前の安全弁不足(DRY RUN なし) | DB-41(BQ 全スキャン課金) | `.claude/rules/bq/dry-run-required.md` |
+| テスト・debug 出力が本番に漏出 | DB-43(本番テーブル汚染) | `.claude/rules/bq/staging-only-tests.md` |
+| 環境差検証漏れ(Linux と Windows の挙動差) | DB-54(CRLF/LF) | `handoff_db_v13.md §4 DB-54` |
+| 既存状態を確認せずに「推奨」を実装 | DB-53(handoff 推奨の現状確認漏れ) | `handoff_db_v13.md §4 DB-53` |
 
 これらは「**機械的検査の hit を独断判定せずに対応する**」あるいは「**環境差を 1 環境のみで検証して見落とす**」
 という共通の構造的リスクを持つ。本ルール違反を検出した際は、上記同型ルールの違反パターンも併せて確認する。
@@ -196,8 +210,8 @@ G2 監査(`project_rules_db_v1.md §3` の grep)で hit した場合:
 
 | スクリプト | 同型リスクの所在 | 確認すべき項目 |
 |---|---|---|
-| `jquants_test_fetch.py` (rev2) | **失敗39 修正済の事故箇所**(line 94) | 修正後の Pattern A 形式維持・rev2 以降の再発生なし |
-| `jquants_update.py` (rev5) | **失敗39 修正済の事故箇所**(line 361) | 修正後の Pattern A 形式維持・rev5 以降の再発生なし |
+| `jquants_test_fetch.py` (rev2) | **DB-39 修正済の事故箇所**(line 94) | 修正後の Pattern A 形式維持・rev2 以降の再発生なし |
+| `jquants_update.py` (rev5) | **DB-39 修正済の事故箇所**(line 361) | 修正後の Pattern A 形式維持・rev5 以降の再発生なし |
 | `edinet_fetch_index.py` | EDINET 環境変数読込(合法ヒット line 164) | 合法ヒットリストに残存・新規追加コードで非合法 hit を作らないこと |
 | `patch_daily_yml_v3.py` | G2 監査ロジック自体(合法ヒット line 30, 31, 89) | 監査ロジック改修時の合法 hit 追加・handoff 更新 |
 | `write_jquants_yaml.py` / `write_yaml.py` | G2 監査ロジック自体(合法ヒット line 118 / 70) | 同上 |

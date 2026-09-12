@@ -12,14 +12,28 @@ related_rules:
   - "§9-2 (commit 単一責任原則)"
   - git-single-responsibility-commit
   - G2
-last_updated: 2026-06-01
+last_updated: 2026-09-11
 applies_to_environments:
   - claude_code
   - chat_claude
   - human
+scope: global
+source_project: jp-stock-db
+vault_version: 1.0
+vault_imported: 2026-08-29
+origin_path: C:\jp-stock-db\.claude\rules\git\explicit-add.md
 ---
 
 # git add 明示パス必須ルール
+
+<!-- portability-note -->
+> **他プロジェクトでの読み替え** — 本ルールは `second-brain` から配布されている。
+> 文中の `SR-xx` / `G-x` / `失敗NN` / `handoff_db_vNN.md` / `project_rules_db_v1.md` は
+> **発祥プロジェクトでの出自の記録**であり、参照先が自プロジェクトに存在しなくてもよい。
+> **規範・違反パターン・チェックリストはそのまま有効**。教訓の原文は
+> `C:\second-brain\20_failures\` にある。
+<!-- portability-note -->
+
 
 ## 規範
 
@@ -120,7 +134,7 @@ git add .                  # ❌ PowerShell でも挙動は同一
 & git add -A               # ❌ 呼出演算子経由でも同型
 ```
 
-→ 失敗56(絶対パス)対策と併せ、PowerShell 自動化での巻き込みを防ぐ。
+→ DB-56(絶対パス)対策と併せ、PowerShell 自動化での巻き込みを防ぐ。
 
 ## 正しい実装パターン
 
@@ -161,17 +175,17 @@ git log -1 --stat       # 1 file changed であることを確認(§9-2)
 - `git commit` に `-a` を付けない(stage 済集合のみを commit)
 - commit 後 `git log -1 --stat` で `1 file changed`(単一責任)を数値確認
 
-### Pattern D: PowerShell からの明示 add(失敗56 併用)
+### Pattern D: PowerShell からの明示 add(DB-56 併用)
 
 ```powershell
 # ✅ 正しい例: 相対パス明示 add(cwd 検算済前提)
-Get-Location                                              # C:\jp-stock-db\ を確認(失敗56 対策)
+Get-Location                                              # C:\<プロジェクトルート>\ を確認(DB-56 対策)
 git status --short .claude/rules/git/explicit-add.md
 git add .claude/rules/git/explicit-add.md                # 明示パス(§9-5)
 git status --short .claude/rules/git/explicit-add.md
 ```
 
-- 新規ウィンドウは最初に `Get-Location` で cwd 検算(失敗56 対策)
+- 新規ウィンドウは最初に `Get-Location` で cwd 検算(DB-56 対策)
 - `git add .` を絶対に書かない
 
 ## 関連過去教訓
@@ -212,7 +226,7 @@ git status --short .claude/rules/git/explicit-add.md
 - [ ] add 後に `git status --short <file>` で `A` を目視確認したか
 - [ ] `git diff --cached --name-only` で staged 集合の件数が想定どおりか確認した
 - [ ] commit 後に `git log -1 --stat` で `1 file changed`(§9-2)を数値確認したか
-- [ ] PowerShell の場合、最初に `Get-Location` で cwd を検算したか(失敗56 併用)
+- [ ] PowerShell の場合、最初に `Get-Location` で cwd を検算したか(DB-56 併用)
 
 ## 同型ケースの参照
 
@@ -221,8 +235,8 @@ git status --short .claude/rules/git/explicit-add.md
 | 同型構造 | 関連規範 | 参照ルール |
 |---|---|---|
 | 操作対象を明示確定し無差別実行を禁止 | §9-2(commit 単一責任) | `git-single-responsibility-commit.md` |
-| 巻き込み防止のため操作を機械的に制約 | 失敗56(絶対パス) | `process/powershell-absolute-path.md`(予定) |
-| 無差別操作が秘匿物を巻き込む経路 | G2 / 失敗39 | `secrets/no-env-var-print.md` |
+| 巻き込み防止のため操作を機械的に制約 | DB-56(絶対パス) | `process/powershell-absolute-path.md`(予定) |
+| 無差別操作が秘匿物を巻き込む経路 | G2 / DB-39 | `secrets/no-env-var-print.md` |
 | 「don't ask again」系で安全弁を外さない | §9-4 | `git/no-dont-ask-again.md`(予定) |
 
 これらは「**操作対象を明示確定し、無差別な一括実行を構造的に禁止する**」という共通のリスク制御構造を持つ。

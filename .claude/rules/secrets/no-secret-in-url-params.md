@@ -14,14 +14,28 @@ related_rules:
   - "SR-9 (外部 API は公式仕様を web 確認)"
   - secrets-no-env-var-print
   - bq-staging-only-tests
-last_updated: 2026-06-01
+last_updated: 2026-09-11
 applies_to_environments:
   - claude_code
   - chat_claude
   - human
+scope: global
+source_project: jp-stock-db
+vault_version: 1.0
+vault_imported: 2026-08-29
+origin_path: C:\jp-stock-db\.claude\rules\secrets\no-secret-in-url-params.md
 ---
 
 # Secrets: 認証情報を URL クエリ・パスに直書き / ログ / commit しない
+
+<!-- portability-note -->
+> **他プロジェクトでの読み替え** — 本ルールは `second-brain` から配布されている。
+> 文中の `SR-xx` / `G-x` / `失敗NN` / `handoff_db_vNN.md` / `project_rules_db_v1.md` は
+> **発祥プロジェクトでの出自の記録**であり、参照先が自プロジェクトに存在しなくてもよい。
+> **規範・違反パターン・チェックリストはそのまま有効**。教訓の原文は
+> `C:\second-brain\20_failures\` にある。
+<!-- portability-note -->
+
 
 ## 規範
 
@@ -35,7 +49,7 @@ API キー・トークン・パスワード等の秘匿情報を、**URL のク�
 
 本ルールは `project_rules_db_v1.md §5`(secrets は `.env` / GHA Secrets 経由で Git 非コミット)および `§3 G2`(Secrets ログ出力ゲート)を、**URL 経由の漏洩経路に特化して分解した詳細仕様**である。
 固有の過去事故番号を持たない**予防的規範**であり、`related_failures` は空配列とする
-(`secrets/no-env-var-print.md`(G2 / 失敗39 派生)/ git 系3ルールと同型の「事故記録なし予防ルール」)。
+(`secrets/no-env-var-print.md`(G2 / DB-39 派生)/ git 系3ルールと同型の「事故記録なし予防ルール」)。
 
 ### なぜ URL 経由の漏洩が危険か
 

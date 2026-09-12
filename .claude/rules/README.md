@@ -13,6 +13,12 @@ related_handoffs:
 # .claude/rules/ — ルール体系の概要
 
 jp_stock_db プロジェクトの **コードレビュー用ルール集** の置き場。
+
+> **正本の所在（2026-08-31〜）**: `general` / `secrets` / `encoding` / `shell` / `yaml` / `process` / `git` は
+> **`C:\second-brain\10_rules\global\` が正本**であり、ここにあるのは配布されたコピー。直接編集しない。
+> 編集は vault 側で行い `python C:\second-brain\_tools\sync_rules.py --apply` で配布する。
+> `bq` は本プロジェクト固有（`C:\second-brain\10_rules\project\jp-stock-db\bq\` が正本）。
+> 詳細は `CLAUDE.md §SB`。
 このディレクトリは `/rules-review` カスタムコマンドおよびチャット Claude による rules-review プロセスで参照される。
 
 ## 1. 設計思想
@@ -45,13 +51,14 @@ jp_stock_db プロジェクトの **コードレビュー用ルール集** の�
 ├── _process/                    # プロセス定義(レビュー対象外)
 │   └── rules-review-process.md  # 単一情報源としての手順書
 ├── _tests/                      # 検出テスト(Phase 2-5 で作成・レビュー対象外)
-├── general/                     # 全体規範
-├── bq/                          # BigQuery 関連
-├── secrets/                     # 秘匿情報
-├── python/                      # Python 言語規約
-├── shell/                       # シェル / PowerShell 規約
-├── yaml/                        # YAML / GitHub Actions
-└── git/                         # Git 操作
+├── general/                     # 全体規範              [second-brain 配布]
+├── bq/                          # BigQuery 関連         (本プロジェクト固有)
+├── secrets/                     # 秘匿情報              [second-brain 配布]
+├── encoding/                    # 文字コード            [second-brain 配布]
+├── shell/                       # シェル / PowerShell   [second-brain 配布]
+├── yaml/                        # YAML / GitHub Actions [second-brain 配布]
+├── process/                     # 作業プロセス          [second-brain 配布]
+└── git/                         # Git 操作              [second-brain 配布]
 ````
 
 `_` で始まるディレクトリ(`_process/`, `_tests/`)は rules-review のレビュー対象から除外される。
@@ -67,6 +74,8 @@ jp_stock_db プロジェクトの **コードレビュー用ルール集** の�
 | `shell` | シェル / PowerShell | PowerShell の文字列規約 | SR-15 |
 | `yaml` | YAML / GitHub Actions | YAML は Python 生成のみ(手書き禁止) | SR-13 |
 | `git` | Git 操作 | force push 禁止 / pre-commit 必須 | — |
+| `encoding` | 文字コード全般 | UTF-8 BOMなし / LF 必須 | 失敗47 / 54 / 59 / 60 |
+| `process` | 作業プロセス | 絶対パス / 1ルール1セッション / handoff の状態表記 | 失敗55 / 56 / 58 / OPS-01 |
 
 同一カテゴリ内では原則 **5 ルール以下** を目標とする。超える場合はサブカテゴリ分割を検討
 (例: `bq/dml/` と `bq/select/`)。

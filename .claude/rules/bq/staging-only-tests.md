@@ -15,6 +15,11 @@ applies_to_environments:
   - chat_claude
   - human
 last_updated: 2026-05-23
+scope: project
+source_project: jp-stock-db
+vault_version: 1.0
+vault_imported: 2026-08-29
+origin_path: C:\jp-stock-db\.claude\rules\bq\staging-only-tests.md
 ---
 
 # BQ テスト実行は staging テーブル限定

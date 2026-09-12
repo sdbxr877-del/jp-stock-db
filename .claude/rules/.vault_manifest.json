@@ -1,0 +1,102 @@
+{
+ "generated_by": "second-brain/_tools/sync_rules.py",
+ "updated_at": "2026-09-12T13:54:14",
+ "files": {
+  "encoding/utf8-required.md": {
+   "hash": "168dc8512740a735",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "general/attribute-errors-correctly.md": {
+   "hash": "37c41291477b5dc3",
+   "synced_at": "2026-09-01T03:04:44"
+  },
+  "general/check-regime.md": {
+   "hash": "33b6acf907124c01",
+   "synced_at": "2026-09-12T13:54:14"
+  },
+  "general/dont-trust-success.md": {
+   "hash": "55508f8367af69f2",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "general/dry-run-must-not-write.md": {
+   "hash": "95bc85bd2cdb87b2",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "general/verify-external-api-spec.md": {
+   "hash": "65334a15f95932a7",
+   "synced_at": "2026-09-12T07:40:11"
+  },
+  "git/explicit-add.md": {
+   "hash": "cd4fc45612a742e7",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "git/no-dont-ask-again.md": {
+   "hash": "d577332767e5a288",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "git/single-responsibility-commit.md": {
+   "hash": "4d5920a367a5a83f",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "process/handoff-disk-tracked-distinction.md": {
+   "hash": "0be365e9a461cb1d",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "process/handoff-quality.md": {
+   "hash": "b635b542ae543498",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "process/new-claude-code-session-per-rule.md": {
+   "hash": "9bff3b692520685c",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "process/no-git-from-remote-shell.md": {
+   "hash": "4cba320cb6950fcb",
+   "synced_at": "2026-09-01T03:04:44"
+  },
+  "process/powershell-absolute-path.md": {
+   "hash": "acab3af46b31878b",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "secrets/no-env-var-print.md": {
+   "hash": "6779ab1d7fb33e61",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "secrets/no-secret-in-url-params.md": {
+   "hash": "9dd568bd53f45b73",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "secrets/no-secret-print.md": {
+   "hash": "5ab5d7400bcfe0ee",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "shell/no-python-c-oneliner.md": {
+   "hash": "1b61c99f04e989b8",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "yaml/no-powershell-heredoc.md": {
+   "hash": "1a076b360bbfa857",
+   "synced_at": "2026-09-12T08:43:30"
+  },
+  "bq/dry-run-required.md": {
+   "hash": "9bdc459bcd4ca63d",
+   "synced_at": "2026-08-31T23:11:27"
+  },
+  "bq/no-select-star.md": {
+   "hash": "71f81e76911f0258",
+   "synced_at": "2026-08-31T23:11:27"
+  },
+  "bq/partition-filter-required.md": {
+   "hash": "8a773f81335f586f",
+   "synced_at": "2026-08-31T23:11:27"
+  },
+  "bq/staging-only-tests.md": {
+   "hash": "bf2acf6e2f60f023",
+   "synced_at": "2026-08-31T23:11:27"
+  },
+  "@shared/verify_utf8.py": {
+   "hash": "3a6e854863ebe18e",
+   "synced_at": ""
+  }
+ }
+}

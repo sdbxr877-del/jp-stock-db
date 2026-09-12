@@ -13,14 +13,28 @@ related_rules:
   - git-explicit-add
   - "§1.2 (一機能一バージョン)"
   - G2
-last_updated: 2026-06-01
+last_updated: 2026-09-11
 applies_to_environments:
   - claude_code
   - chat_claude
   - human
+scope: global
+source_project: jp-stock-db
+vault_version: 1.0
+vault_imported: 2026-08-29
+origin_path: C:\jp-stock-db\.claude\rules\git\single-responsibility-commit.md
 ---
 
 # commit 単一責任原則ルール
+
+<!-- portability-note -->
+> **他プロジェクトでの読み替え** — 本ルールは `second-brain` から配布されている。
+> 文中の `SR-xx` / `G-x` / `失敗NN` / `handoff_db_vNN.md` / `project_rules_db_v1.md` は
+> **発祥プロジェクトでの出自の記録**であり、参照先が自プロジェクトに存在しなくてもよい。
+> **規範・違反パターン・チェックリストはそのまま有効**。教訓の原文は
+> `C:\second-brain\20_failures\` にある。
+<!-- portability-note -->
+
 
 ## 規範
 
@@ -53,7 +67,7 @@ db_v0.15〜db_v0.16 の全ルール作成 commit は、いずれも「1 ルー�
 | `5c213bc` | `encoding/utf8-required.md` | 1 |
 | `0fcdcc8` | `git/explicit-add.md` | 1 |
 
-この「1 ルール = 1 セッション(失敗58)= 1 commit(§9-2)」の対応が、レビュー可能性と巻き戻し容易性を担保している。
+この「1 ルール = 1 セッション(DB-58)= 1 commit(§9-2)」の対応が、レビュー可能性と巻き戻し容易性を担保している。
 
 ### 対象範囲
 
@@ -182,7 +196,7 @@ git log -1 --stat
 ```
 
 - stage 件数を数値で確認してから commit
-- `Get-Content` 等で日本語を確認する場合は `-Encoding utf8` 明示(失敗60)
+- `Get-Content` 等で日本語を確認する場合は `-Encoding utf8` 明示(DB-60)
 
 ## 関連過去教訓
 
@@ -229,8 +243,8 @@ git log -1 --stat
 |---|---|---|
 | stage 集合を明示確定する(commit の前提) | §9-5 | `git-explicit-add.md` |
 | 変更を 1 つに絞る(機能レベル) | §1.2 | `general/one-feature-per-version.md` |
-| 1 ルール = 1 セッション(作業レベル) | 失敗58 | `process/new-claude-code-session-per-rule.md`(予定) |
-| 混在が秘匿物を巻き込む経路 | G2 / 失敗39 | `secrets/no-env-var-print.md` |
+| 1 ルール = 1 セッション(作業レベル) | DB-58 | `process/new-claude-code-session-per-rule.md`(予定) |
+| 混在が秘匿物を巻き込む経路 | G2 / DB-39 | `secrets/no-env-var-print.md` |
 
 これらは「**変更単位を 1 つに絞り、混在を構造的に禁止する**」という共通のリスク制御構造を持つ(作業 / 機能 / stage / commit の各レイヤ)。
 

@@ -5,21 +5,35 @@ priority: critical
 paths:
   - "*.ps1"
 related_failures:
-  - "失敗56"
+  - "DB-56"
 related_rules:
   - "git-explicit-add (§9-5・PowerShell 明示 add の前提)"
-  - "encoding/utf8-required (失敗60・Get-Content -Encoding utf8)"
+  - "encoding/utf8-required (DB-60・Get-Content -Encoding utf8)"
   - "db_v0.16 追加原則 #4 (数値は実機実測で確定)"
   - process-handoff-disk-tracked-distinction
   - process-new-claude-code-session-per-rule
-last_updated: 2026-06-13
+last_updated: 2026-09-11
 applies_to_environments:
   - claude_code
   - chat_claude
   - human
+scope: global
+source_project: jp-stock-db
+vault_version: 1.0
+vault_imported: 2026-08-29
+origin_path: C:\jp-stock-db\.claude\rules\process\powershell-absolute-path.md
 ---
 
 # PowerShell 絶対パス必須ルール(.NET API / cwd 検算)
+
+<!-- portability-note -->
+> **他プロジェクトでの読み替え** — 本ルールは `second-brain` から配布されている。
+> 文中の `SR-xx` / `G-x` / `失敗NN` / `handoff_db_vNN.md` / `project_rules_db_v1.md` は
+> **発祥プロジェクトでの出自の記録**であり、参照先が自プロジェクトに存在しなくてもよい。
+> **規範・違反パターン・チェックリストはそのまま有効**。教訓の原文は
+> `C:\second-brain\20_failures\` にある。
+<!-- portability-note -->
+
 
 ## 規範
 
@@ -30,7 +44,7 @@ PowerShell で **.NET 静的 API**(`[System.IO.File]::*` / `[System.IO.Directory
 3. **新規ウィンドウで cwd 検算なしにファイル操作を開始**すること
 4. **handoff / 検証スニペット設計時に相対パス前提のコマンドを記載**すること(受け手が別 cwd で実行して失敗する)
 
-本ルールは失敗56(PowerShell `cd` と .NET `Environment.CurrentDirectory` の乖離 + ウィンドウ別 cwd 管理ミスにより `[System.IO.File]::ReadAllBytes` が `DirectoryNotFoundException` で計3回失敗した事故)の再発防止規範である。
+本ルールはDB-56(PowerShell `cd` と .NET `Environment.CurrentDirectory` の乖離 + ウィンドウ別 cwd 管理ミスにより `[System.IO.File]::ReadAllBytes` が `DirectoryNotFoundException` で計3回失敗した事故)の再発防止規範である。
 
 ### $PWD と .NET CurrentDirectory の乖離(技術的根拠)
 
@@ -39,11 +53,11 @@ PowerShell の `Set-Location`(`cd`)は **PowerShell プロバイダの location(
 - **PowerShell ネイティブ cmdlet**(`Get-Content` / `Set-Content` / `Test-Path` 等)は `$PWD` を基準に相対パスを解決する → `cd` 後の相対パスは正しく効く
 - **.NET 静的 API**(`[System.IO.File]::ReadAllBytes` 等)は `Environment.CurrentDirectory`(= プロセス起動時の cwd・多くはユーザホーム)を基準にする → `cd` しても相対パスは**ユーザホーム基準のまま**で解決され `DirectoryNotFoundException`
 
-つまり「`cd` したのに .NET 呼出だけ失敗する」という非対称が生じる。失敗56 のエラーパスが `C:\Users\hiroyuki\...` base だったのはこのためである。**.NET API には常に絶対パスを渡す**ことが唯一の確実な回避策となる。
+つまり「`cd` したのに .NET 呼出だけ失敗する」という非対称が生じる。DB-56 のエラーパスが `C:\Users\hiroyuki\...` base だったのはこのためである。**.NET API には常に絶対パスを渡す**ことが唯一の確実な回避策となる。
 
 ### なぜ本リポジトリで頻発するか(固有の動機)
 
-本プロジェクトは「案 A ハイブリッド」で **PowerShell + Claude Code + 新規ウィンドウ**を頻繁に行き来する。新規 PowerShell ウィンドウはユーザホームから起動するため、`cd C:\jp-stock-db` を忘れると cwd 検算なしのファイル操作が即座に破綻する。さらに検証で `Get-FileHash` や `[System.IO.File]::*` を多用するため、相対パス前提のスニペットは受け手環境で再現性を失う。実際に失敗56 は **第1ルール Phase3 / 第2ルール Phase4 / 第3ルール Phase2 の計3回再発**した(対策確立後は再発なし)。
+本プロジェクトは「案 A ハイブリッド」で **PowerShell + Claude Code + 新規ウィンドウ**を頻繁に行き来する。新規 PowerShell ウィンドウはユーザホームから起動するため、`cd C:\jp-stock-db` を忘れると cwd 検算なしのファイル操作が即座に破綻する。さらに検証で `Get-FileHash` や `[System.IO.File]::*` を多用するため、相対パス前提のスニペットは受け手環境で再現性を失う。実際にDB-56 は **第1ルール Phase3 / 第2ルール Phase4 / 第3ルール Phase2 の計3回再発**した(対策確立後は再発なし)。
 
 ### 対象範囲
 
@@ -67,13 +81,13 @@ PowerShell の `Set-Location`(`cd`)は **PowerShell プロバイダの location(
 | 項目 | 値 |
 |---|---|
 | 標準作業ディレクトリ | `C:\jp-stock-db` |
-| 失敗56 再発回数 | 3(第1ルール Phase3 / 第2 Phase4 / 第3 Phase2) |
+| DB-56 再発回数 | 3(第1ルール Phase3 / 第2 Phase4 / 第3 Phase2) |
 | cwd 検算コマンド | `Get-Location`(= `$PWD` 表示) |
 | 乖離の根本 | `Set-Location` は `$PWD` 更新 / `Environment.CurrentDirectory` 非更新 |
 
 ## 違反パターン(検出すべきコード)
 
-### Pattern 1: .NET API に相対パス(失敗56 の原型)
+### Pattern 1: .NET API に相対パス(DB-56 の原型)
 
 ```powershell
 # 違反: cd 後でも .NET は CurrentDirectory(ホーム)基準
@@ -111,8 +125,8 @@ git add .claude/rules/process/x.md   # 実は cwd がホームで「fatal: not a
 
 ```powershell
 cd C:\jp-stock-db
-Get-Location                                  # C:\jp-stock-db を検算(失敗56 対策)
-$path = "C:\jp-stock-db\.claude\rules\process\handoff-disk-tracked-distinction.md"
+Get-Location                                  # C:\jp-stock-db を検算(DB-56 対策)
+$path = "C:\<プロジェクトルート>\.claude\rules\process\handoff-disk-tracked-distinction.md"
 $bytes = [System.IO.File]::ReadAllBytes($path)   # 絶対パスなら確実
 ```
 
@@ -144,9 +158,9 @@ cd C:\jp-stock-db
 
 ## 関連過去教訓
 
-### 失敗56 の出自(handoff_db_v14 §4)
+### DB-56 の出自(handoff_db_v14 §4)
 
-失敗56 は db_v0.14 第1ルール Phase3 のリトライ時に発見。`cd` 後に `[System.IO.File]::ReadAllBytes('.\relative\path')` が `DirectoryNotFoundException` で失敗し、エラーパスの base がユーザホームだった。真因は「`Set-Location` は `$PWD` を更新するが .NET `Environment.CurrentDirectory` は更新しない」という設計上の乖離に、新規ウィンドウの cwd 管理ミス(ホーム起動・cd 忘れ)が重なったもの。責任所在は Web Claude(Phase3 コマンドで相対パスを使用)+ Hiroyuki(ウィンドウ別 cwd 管理)の複合と記録されている。
+DB-56 は db_v0.14 第1ルール Phase3 のリトライ時に発見。`cd` 後に `[System.IO.File]::ReadAllBytes('.\relative\path')` が `DirectoryNotFoundException` で失敗し、エラーパスの base がユーザホームだった。真因は「`Set-Location` は `$PWD` を更新するが .NET `Environment.CurrentDirectory` は更新しない」という設計上の乖離に、新規ウィンドウの cwd 管理ミス(ホーム起動・cd 忘れ)が重なったもの。責任所在は Web Claude(Phase3 コマンドで相対パスを使用)+ Hiroyuki(ウィンドウ別 cwd 管理)の複合と記録されている。
 
 ### 3回再発の経緯
 
@@ -155,9 +169,9 @@ cd C:\jp-stock-db
 ### 関連ルール
 
 - `git-explicit-add`(§9-5): PowerShell からの明示 add(Pattern D)も冒頭 `Get-Location` 検算を前提とする(本ルールと併用)
-- `encoding/utf8-required`(失敗60): `Get-Content -Encoding utf8` も同じ PowerShell 操作規律の一部
-- `process-handoff-disk-tracked-distinction`(失敗55): 状態を実測する `git status` も正しい cwd 前提
-- `process-new-claude-code-session-per-rule`(失敗58): セッション/ウィンドウ管理規律の対
+- `encoding/utf8-required`(DB-60): `Get-Content -Encoding utf8` も同じ PowerShell 操作規律の一部
+- `process-handoff-disk-tracked-distinction`(DB-55): 状態を実測する `git status` も正しい cwd 前提
+- `process-new-claude-code-session-per-rule`(DB-58): セッション/ウィンドウ管理規律の対
 
 ## レビュー時のチェックリスト
 
@@ -174,13 +188,13 @@ cd C:\jp-stock-db
 
 | 観点 | 関連ルール | 関係 |
 |---|---|---|
-| PowerShell 操作規律 | `encoding/utf8-required` | `-Encoding utf8` 明示(失敗60)と対 |
+| PowerShell 操作規律 | `encoding/utf8-required` | `-Encoding utf8` 明示(DB-60)と対 |
 | 明示 add の前提 | `git-explicit-add` | PowerShell 明示 add も cwd 検算前提 |
 | 実機実測の前提 | db_v0.16 追加原則 #4 | 実測コマンドが正しい cwd で動くこと |
 | セッション/ウィンドウ管理 | `process-new-claude-code-session-per-rule` | 環境境界の管理規律 |
 
 ### コードベース内の同型箇所(レビュー対象候補)
 
-- 検証用 `.ps1` / Here-String 内の `[System.IO.File]::WriteAllBytes`(失敗59 と併発しやすい箇所)
+- 検証用 `.ps1` / Here-String 内の `[System.IO.File]::WriteAllBytes`(DB-59 と併発しやすい箇所)
 - handoff §7-A 等の数値確定スニペット: 冒頭 `cd C:\jp-stock-db` の有無
 - Claude Code が提案する PowerShell 検証手順: .NET API 利用時の絶対パス化

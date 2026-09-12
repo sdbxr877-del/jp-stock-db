@@ -16,6 +16,11 @@ applies_to_environments:
   - claude_code
   - chat_claude
   - human
+scope: project
+source_project: jp-stock-db
+vault_version: 1.0
+vault_imported: 2026-08-29
+origin_path: C:\jp-stock-db\.claude\rules\bq\partition-filter-required.md
 ---
 
 # BQ パーティションフィルタ必須ルール

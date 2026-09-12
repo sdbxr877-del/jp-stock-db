@@ -14,14 +14,28 @@ related_rules:
   - git-single-responsibility-commit
   - secrets-no-env-var-print
   - bq-staging-only-tests
-last_updated: 2026-06-01
+last_updated: 2026-09-11
 applies_to_environments:
   - claude_code
   - chat_claude
   - human
+scope: global
+source_project: jp-stock-db
+vault_version: 1.0
+vault_imported: 2026-08-29
+origin_path: C:\jp-stock-db\.claude\rules\git\no-dont-ask-again.md
 ---
 
 # 「don't ask again」系の選択肢を選ばないルール
+
+<!-- portability-note -->
+> **他プロジェクトでの読み替え** — 本ルールは `second-brain` から配布されている。
+> 文中の `SR-xx` / `G-x` / `失敗NN` / `handoff_db_vNN.md` / `project_rules_db_v1.md` は
+> **発祥プロジェクトでの出自の記録**であり、参照先が自プロジェクトに存在しなくてもよい。
+> **規範・違反パターン・チェックリストはそのまま有効**。教訓の原文は
+> `C:\second-brain\20_failures\` にある。
+<!-- portability-note -->
+
 
 ## 規範
 
@@ -41,7 +55,7 @@ Claude Code の確認ダイアログでは **`1. Yes`(この 1 回のみ承認)�
 
 ### なぜ毎回確認が必須か(本リポジトリ固有の動機)
 
-本プロジェクトの安全性は「**提案と確定の分離**」で担保されている。案 A ハイブリッドでは、Claude Code が Write/編集を提案し、**commit は PowerShell 側で人間がクロスチェック**(失敗60 の `Get-Content -Encoding utf8` 照合 + pre-commit hook 目視)して確定する。`don't ask again` / `auto-accept` はこの確認チェックポイントを構造的に消し去り、分離を崩す。
+本プロジェクトの安全性は「**提案と確定の分離**」で担保されている。案 A ハイブリッドでは、Claude Code が Write/編集を提案し、**commit は PowerShell 側で人間がクロスチェック**(DB-60 の `Get-Content -Encoding utf8` 照合 + pre-commit hook 目視)して確定する。`don't ask again` / `auto-accept` はこの確認チェックポイントを構造的に消し去り、分離を崩す。
 
 加えて本リポジトリは **untracked が常駐**している(handoff 系 `.md` / `jp_stock_db_v*_handoff.zip` / `.bak_*` / 実験 `.py` 等・件数は次セッション開始時に PowerShell 実測で確定)。auto-accept edits 状態では §9-5(明示 add)/ §9-2(単一責任 commit)の巻き込み事故が**無確認で通過**し、検知不能になる。
 
@@ -73,7 +87,7 @@ Claude Code の確認ダイアログでは **`1. Yes`(この 1 回のみ承認)�
 |---|---|---|
 | Claude Code で選ぶ選択肢 | `1. Yes` のみ | project_rules_db_v1.md §9-4 |
 | commit 確定の主体 | PowerShell 側(人間クロスチェック) | handoff_db_v16.md §5 追加原則 #2 |
-| hook 迂回の禁止 | `--no-verify` 不使用 | 失敗60(encoding クロスチェック) |
+| hook 迂回の禁止 | `--no-verify` 不使用 | DB-60(encoding クロスチェック) |
 | untracked 常駐 | 実測で確定(要再カウント) | handoff_db_v16.md §3 / 追加原則 #4 |
 
 ## 違反パターン(検出すべき選択・コード)
@@ -103,12 +117,12 @@ auto-accept edits: ON          # ❌ 編集を以後無確認適用
 
 ```bash
 # 違反例: hook 迂回・暗黙 stage で人間確認を構造的に外す
-git commit --no-verify -m "fix"   # ❌ pre-commit hook(失敗60 照合)を迂回
+git commit --no-verify -m "fix"   # ❌ pre-commit hook(DB-60 照合)を迂回
 git commit -am "fix"              # ❌ 暗黙 stage + 確認省略(§9-5 / §9-2 と二重違反)
 git config core.hooksPath /dev/null  # ❌ hook の永続無効化
 ```
 
-→ `--no-verify` は失敗60 のクロスチェックを飛ばす。grep で `git add` を探しても出ないため、`--no-verify` / `commit -a` の検出が必要(False Negative 厳禁)。
+→ `--no-verify` はDB-60 のクロスチェックを飛ばす。grep で `git add` を探しても出ないため、`--no-verify` / `commit -a` の検出が必要(False Negative 厳禁)。
 
 ### Pattern 4: スクリプトでの承認自動回答(`.py` / `.ps1` / `.sh`)
 
@@ -129,7 +143,7 @@ Remove-Item .\target -Recurse -Force -Confirm:$false   # ❌ 確認の一律無�
 $ConfirmPreference = 'None'                             # ❌ セッション全体で確認停止
 ```
 
-→ 失敗56(絶対パス)対策と相反する。cwd 誤認時に `-Confirm:$false` が走ると、意図しない範囲を無確認で破壊する。
+→ DB-56(絶対パス)対策と相反する。cwd 誤認時に `-Confirm:$false` が走ると、意図しない範囲を無確認で破壊する。
 
 ## 正しい実装パターン
 
@@ -160,7 +174,7 @@ git diff --cached --name-only                               # staged 集合 1 �
 
 ```powershell
 # ✅ 正しい例: hook を通し、人間が出力を目視確認してから確定
-Get-Location                                                # cwd 検算(失敗56)
+Get-Location                                                # cwd 検算(DB-56)
 git add .claude/rules/git/no-dont-ask-again.md              # 明示 add(§9-5)
 git commit -m "docs: add .claude/rules/git/no-dont-ask-again.md (§9-4 enforcement)"
 git log -1 --stat                                           # 1 file changed を目視(§9-2)
@@ -169,7 +183,7 @@ git log -1 --stat                                           # 1 file changed を
 - commit の確定主体は PowerShell 側の人間(handoff §5 追加原則 #2)
 - pre-commit hook の出力(G1 / G2 / SR-14)を人間が PASS 確認してから次へ
 
-### Pattern D: hook は `--no-verify` せず必ず通す(失敗60 連動)
+### Pattern D: hook は `--no-verify` せず必ず通す(DB-60 連動)
 
 ```bash
 # ✅ 正しい例: hook を迂回しない / 失敗時は修正してから再 commit
@@ -178,7 +192,7 @@ git commit -m "docs: add .claude/rules/git/no-dont-ask-again.md (§9-4 enforceme
 ```
 
 - `--no-verify` を使わない。hook FAIL は「迂回」ではなく「修正」で解消する
-- encoding 不一致は `Get-Content -Encoding utf8`(失敗60)で原因を特定してから再 commit
+- encoding 不一致は `Get-Content -Encoding utf8`(DB-60)で原因を特定してから再 commit
 
 ## 関連過去教訓
 
@@ -222,7 +236,7 @@ git commit -m "docs: add .claude/rules/git/no-dont-ask-again.md (§9-4 enforceme
 - [ ] `.py` / `.sh` / `.ps1` 内に `echo y |` / `--yes` / `-y` / `--force` を確認回避目的で常用していないか確認した
 - [ ] PowerShell で `-Confirm:$false` / `$ConfirmPreference='None'` を一律無効化していないか確認した
 - [ ] commit の確定を PowerShell 側の人間クロスチェック経由で行ったか(案 A 分離)
-- [ ] hook FAIL を迂回せず修正で解消したか(失敗60 連動)
+- [ ] hook FAIL を迂回せず修正で解消したか(DB-60 連動)
 - [ ] per-action 確認の結果を `git status` / `git diff --cached --name-only` の出力で検証したか(§1.6)
 
 ## 同型ケースの参照

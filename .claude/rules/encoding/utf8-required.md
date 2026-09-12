@@ -8,24 +8,38 @@ paths:
   - "*.yml"
   - "*.yaml"
 related_failures:
-  - 失敗47
-  - 失敗54
-  - 失敗59
-  - 失敗60
+  - DB-47
+  - DB-54
+  - DB-59
+  - DB-60
 related_rules:
   - "project_rules_db_v1.md SR-14 (UTF-8 確認)"
   - SR-14
   - SR-12
   - G1
   - G2
-last_updated: 2026-05-24
+last_updated: 2026-09-11
 applies_to_environments:
   - claude_code
   - chat_claude
   - human
+scope: global
+source_project: jp-stock-db
+vault_version: 1.0
+vault_imported: 2026-08-29
+origin_path: C:\jp-stock-db\.claude\rules\encoding\utf8-required.md
 ---
 
 # UTF-8 エンコーディング必須ルール
+
+<!-- portability-note -->
+> **他プロジェクトでの読み替え** — 本ルールは `second-brain` から配布されている。
+> 文中の `SR-xx` / `G-x` / `失敗NN` / `handoff_db_vNN.md` / `project_rules_db_v1.md` は
+> **発祥プロジェクトでの出自の記録**であり、参照先が自プロジェクトに存在しなくてもよい。
+> **規範・違反パターン・チェックリストはそのまま有効**。教訓の原文は
+> `C:\second-brain\20_failures\` にある。
+<!-- portability-note -->
+
 
 ## 規範
 
@@ -36,7 +50,7 @@ applies_to_environments:
 3. **改行コード: LF**(CRLF / CR は禁止・`.gitattributes` で自動正規化される前提だが、書込時から LF が望ましい)
 
 本ルールは `project_rules_db_v1.md SR-14`(UTF-8 確認)を**ファイル単位で照合可能な形に分解した詳細仕様**である。
-特に Windows PowerShell 経由でファイルを書き込む際の文字化け事故(失敗47 / 59 / 60)が頻発しているため、
+特に Windows PowerShell 経由でファイルを書き込む際の文字化け事故(DB-47 / DB-59 / DB-60)が頻発しているため、
 書込側プロセスごとの正しい手順を明示する。
 
 ### 対象範囲
@@ -59,7 +73,7 @@ applies_to_environments:
 
 | パラメータ | 値 | SSOT |
 |---|---|---|
-| 環境変数 `PYTHONIOENCODING` | `utf-8`(User scope) | db_v0.13 §2-3(失敗47 対策) |
+| 環境変数 `PYTHONIOENCODING` | `utf-8`(User scope) | db_v0.13 §2-3(DB-47 対策) |
 | `.gitattributes` LF 正規化 | `* text=auto eol=lf` | db_v0.14 §7-B(commit `c320092`) |
 | 検証スクリプト | `verify_utf8.py`(SR-12 遵守) | `project_rules_db_v1.md L176` |
 
@@ -85,7 +99,7 @@ Set-Content -Path 'file.md' -Value $content  # ❌ CRLF で保存される
 
 → git diff 汚染・Linux 環境で改行表示乱れ・`.gitattributes` 配置後は警告出るが既存 tracked は再正規化必要。
 
-### Pattern 3: Shift-JIS / CP932 で保存(Windows メモ帳デフォルト・失敗47 同型)
+### Pattern 3: Shift-JIS / CP932 で保存(Windows メモ帳デフォルト・DB-47 同型)
 
 ```powershell
 # 違反例: PowerShell デフォルト書込(コンソール codepage = CP932 のまま保存)
@@ -93,34 +107,34 @@ $content | Out-File -FilePath 'file.py'  # ❌ デフォルト encoding が CP93
 ```
 
 → Python 実行時 `UnicodeDecodeError`・GitHub Actions Linux 環境で読込失敗。
-失敗47 (2026-04 月頃) と同型の Windows 環境固有エンコーディング問題。
+DB-47 (2026-04 月頃) と同型の Windows 環境固有エンコーディング問題。
 
-### Pattern 4: PowerShell Here-String 経由日本語書込で CP932 一次解釈(失敗59 直接型)
+### Pattern 4: PowerShell Here-String 経由日本語書込で CP932 一次解釈(DB-59 直接型)
 
 ```powershell
 # 違反例: Here-String 内に日本語を含めて UTF-8 保存
 $content = @"
 # タイトル
-(失敗54 対策・db_v0.14)
+(DB-54 対策・db_v0.14)
 "@
 $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($content)
 [System.IO.File]::WriteAllBytes('file.md', $bytes)  # ❌ Here-String 内日本語が CP932 一次解釈で化け済
 ```
 
-→ 具体例: `(失敗54 対策・db_v0.14)` → `墓セ遅問・ db_v0.14`(失敗59 §4 記録)。
+→ 具体例: `(DB-54 対策・db_v0.14)` → `墓セ遅問・ db_v0.14`(DB-59 §4 記録)。
 PowerShell Here-String は内部でコンソール codepage で文字列を保持。
 `UTF8Encoding` 指定は化けた Unicode 内部表現を UTF-8 化するだけで化けは解消されない。
 
-### Pattern 5: PowerShell `Get-Content` デフォルト読込で表示文字化け(失敗60 直接型)
+### Pattern 5: PowerShell `Get-Content` デフォルト読込で表示文字化け(DB-60 直接型)
 
 ```powershell
 # 違反例: Get-Content デフォルト読込(encoding 未指定)
 Get-Content 'file_with_japanese.md'  # ❌ CP932 として誤解釈 → 化け表示
 ```
 
-→ 具体例: `セッション完了記録` → `縺サ繝・• す繝ァ繝ウ螳御コ・ ィ倅嶸`(失敗60 §補足1 記録)。
+→ 具体例: `セッション完了記録` → `縺サ繝・• す繝ァ繝ウ螳御コ・ ィ倅嶸`(DB-60 §補足1 記録)。
 **ファイル本体は無事**だが、検証コマンドで化け表示を見て誤判断するリスク。
-失敗60 で db_v0.14 セッション末に handoff_db_v14.md 自身の検証時に発覚した。
+DB-60 で db_v0.14 セッション末に handoff_db_v14.md 自身の検証時に発覚した。
 
 ## 正しい実装パターン
 
@@ -148,25 +162,25 @@ $content = @"
 * text=auto eol=lf
 "@
 $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($content)
-[System.IO.File]::WriteAllBytes('C:\jp-stock-db\.gitattributes', $bytes)
+[System.IO.File]::WriteAllBytes('C:\<プロジェクトルート>\.gitattributes', $bytes)
 ```
 
 - `[System.Text.UTF8Encoding]::new($false)`: 引数 `$false` = BOM なし
 - `[System.IO.File]::WriteAllBytes`: バイナリ書込で encoding 二次変換を回避
-- **絶対パス使用**(失敗56 対策)
+- **絶対パス使用**(DB-56 対策)
 
-**日本語を含むファイルは PowerShell 経由で書き込まない**(失敗59 対策):
+**日本語を含むファイルは PowerShell 経由で書き込まない**(DB-59 対策):
 - 代替 A: 本文を ASCII 化(`.gitattributes` で採用)
 - 代替 B: **Claude Code 経由で書き込む**(Linux 環境・UTF-8 ネイティブ・本ルールファイル自身も含む全 `.claude/rules/*.md` がこの方式)
 
-### Pattern C: PowerShell ファイル読込・表示(`-Encoding utf8` 明示・失敗60 対策)
+### Pattern C: PowerShell ファイル読込・表示(`-Encoding utf8` 明示・DB-60 対策)
 
 ```powershell
 # ✅ 正しい例: Get-Content 表示
-Get-Content 'C:\jp-stock-db\file.md' -Encoding utf8
+Get-Content 'C:\<プロジェクトルート>\file.md' -Encoding utf8
 
 # ✅ 正しい例: .NET API 経由読込(検証用)
-$content = [System.IO.File]::ReadAllText('C:\jp-stock-db\file.md', [System.Text.Encoding]::UTF8)
+$content = [System.IO.File]::ReadAllText('C:\<プロジェクトルート>\file.md', [System.Text.Encoding]::UTF8)
 ```
 
 - `-Encoding utf8`: PowerShell 5.x デフォルト読込 encoding は CP932 のため明示必須
@@ -181,30 +195,30 @@ python verify_utf8.py *.py
 ```
 
 - `python -c "..."` ワンライナー禁止(SR-12)
-- `python3 - <<EOF` ヒアドキュメント禁止(SR-12 同型・失敗57 で実害確認済)
+- `python3 - <<EOF` ヒアドキュメント禁止(SR-12 同型・DB-57 で実害確認済)
 - 検証スクリプトは `.py` ファイルに集約
 
 ## 関連過去教訓
 
-### 失敗47(`PYTHONIOENCODING` レジストリ設定・2026-04 月頃)
+### DB-47(`PYTHONIOENCODING` レジストリ設定・2026-04 月頃)
 
 - **症状**: Windows コンソールの codepage(CP932)が Python の標準入出力 encoding に影響し、UTF-8 出力が化ける
 - **対策**: 環境変数 `PYTHONIOENCODING=utf-8` を User scope で設定(db_v0.13 §2-3)
 - **本ルールとの関係**: 環境変数で Python 側を強制 UTF-8 化する基盤。本ルールはファイル単位の規範
 
-### 失敗54(`.gitattributes` で LF 強制・db_v0.14)
+### DB-54(`.gitattributes` で LF 強制・db_v0.14)
 
 - **症状**: Windows で作成した `.py` / `.md` が CRLF で git commit され、Linux 環境で差分汚染
 - **対策**: `.gitattributes` で `* text=auto eol=lf` 配置(db_v0.14 §7-B・commit `c320092`)
 - **本ルールとの関係**: 改行コード LF 強制の構造的解決。本ルールは書込時点での LF 明示を促す
 
-### 失敗59(PowerShell Here-String 日本語化け・db_v0.14)
+### DB-59(PowerShell Here-String 日本語化け・db_v0.14)
 
 - **症状**: PowerShell `@"..."@` Here-String 内日本語が CP932 一次解釈で化けて UTF-8 保存される
 - **対策**: PowerShell からの日本語含むファイル書込は Here-String 避ける(db_v0.14 追加原則 #3)
 - **本ルールとの関係**: Pattern 4 / Pattern B で正式記載
 
-### 失敗60(PowerShell `Get-Content` デフォルト読込文字化け・db_v0.14 supplement)
+### DB-60(PowerShell `Get-Content` デフォルト読込文字化け・db_v0.14 supplement)
 
 - **症状**: `Get-Content` デフォルト読込が CP932 で日本語 UTF-8 ファイルを誤解釈
 - **対策**: `Get-Content` は `-Encoding utf8` 明示(db_v0.14 追加原則 #7)
@@ -237,11 +251,11 @@ python verify_utf8.py *.py
 
 | 同型構造 | 関連失敗 | 参照ルール |
 |---|---|---|
-| Windows 環境固有のエンコーディング問題 | 失敗47 / 59 / 60 | 本ルール Pattern 3-5 |
-| Linux と Windows の挙動差を機械的に解決 | 失敗54(CRLF) | `.gitattributes`(commit c320092) |
-| 検証経路の SR-12 遵守(`python -c` 禁止) | 失敗57 | `.claude/rules/bq/dry-run-required.md` 等(全 BQ ルール共通) |
-| 機械的検査の hit を独断判定で見逃さない | 失敗39 | `.claude/rules/secrets/no-env-var-print.md` |
-| 本実行前の安全弁の機械的強制 | 失敗41 | `.claude/rules/bq/partition-filter-required.md` / `.claude/rules/bq/dry-run-required.md` |
+| Windows 環境固有のエンコーディング問題 | DB-47 / DB-59 / DB-60 | 本ルール Pattern 3-5 |
+| Linux と Windows の挙動差を機械的に解決 | DB-54(CRLF) | `.gitattributes`(commit c320092) |
+| 検証経路の SR-12 遵守(`python -c` 禁止) | DB-57 | `.claude/rules/bq/dry-run-required.md` 等(全 BQ ルール共通) |
+| 機械的検査の hit を独断判定で見逃さない | DB-39 | `.claude/rules/secrets/no-env-var-print.md` |
+| 本実行前の安全弁の機械的強制 | DB-41 | `.claude/rules/bq/partition-filter-required.md` / `.claude/rules/bq/dry-run-required.md` |
 
 これらは「**Windows / Linux 環境差を構造的に解決する**」あるいは
 「**検証経路の標準化(SR-12 遵守)で安全弁を機械化する**」という共通の構造的リスクを持つ。

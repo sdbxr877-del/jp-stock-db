@@ -5,7 +5,7 @@ priority: high
 paths:
   - "handoff_*.md"
 related_failures:
-  - "失敗55"
+  - "DB-55"
 related_rules:
   - "project_rules_db_v1.md §6 (重要ファイル表の状態区分)"
   - "db_v0.16 追加原則 #3 (handoff は disk のみ)"
@@ -13,13 +13,27 @@ related_rules:
   - "db_v0.17 追加原則 #4 (件数はカウント基準と時点を明記)"
   - process-powershell-absolute-path
   - process-new-claude-code-session-per-rule
-last_updated: 2026-06-13
+last_updated: 2026-09-11
 applies_to_environments:
   - chat_claude
   - human
+scope: global
+source_project: jp-stock-db
+vault_version: 1.0
+vault_imported: 2026-08-29
+origin_path: C:\jp-stock-db\.claude\rules\process\handoff-disk-tracked-distinction.md
 ---
 
 # handoff 状態区分(disk / tracked / commit)必須ルール
+
+<!-- portability-note -->
+> **他プロジェクトでの読み替え** — 本ルールは `second-brain` から配布されている。
+> 文中の `SR-xx` / `G-x` / `失敗NN` / `handoff_db_vNN.md` / `project_rules_db_v1.md` は
+> **発祥プロジェクトでの出自の記録**であり、参照先が自プロジェクトに存在しなくてもよい。
+> **規範・違反パターン・チェックリストはそのまま有効**。教訓の原文は
+> `C:\second-brain\20_failures\` にある。
+<!-- portability-note -->
+
 
 ## 規範
 
@@ -30,13 +44,13 @@ handoff 文書(`handoff_db_v*.md`)および引継ぎ manifest で各ファイル
 3. **実測に基づかない状態の推測記載**(`git ls-files` / `git status --short` を取らずに「commit 済」と断定すること)
 4. **3 状態のうち 2 状態のみの区別**(「disk / commit」だけで tracked を省くなど)
 
-本ルールは失敗55(handoff「配置済 ✅」表記が tracked/disk 状態を区別せず、受け手が無意識に commit 済と誤読した事故)の再発防止規範である。`project_rules_db_v1.md §6`(重要ファイル表の状態区分)を、機械的にレビュー可能な記載要件へ分解した詳細仕様にあたる。
+本ルールはDB-55(handoff「配置済 ✅」表記が tracked/disk 状態を区別せず、受け手が無意識に commit 済と誤読した事故)の再発防止規範である。`project_rules_db_v1.md §6`(重要ファイル表の状態区分)を、機械的にレビュー可能な記載要件へ分解した詳細仕様にあたる。
 
 ### なぜ 3 状態区別が必須か(本リポジトリ固有の動機)
 
 本リポジトリは **untracked が 77 件常駐**している(handoff 系 `.md` / `jp_stock_db_v*_handoff.zip` / 中間 content `.md` / README manifest 等・db_v0.10 以前から既知残存)。この「常時 dirty working tree」が本ルールの構造的前提である。
 
-受け取り側(次セッションの Web Claude / Claude Code / Hiroyuki)が handoff を読む際、ファイル表に「配置済 ✅」とだけ書かれていると、**無意識に「commit 済 = clean working tree に含まれる」と解釈**する。しかし実体は untracked(disk のみ)であることがあり、この乖離は Phase 1 の現状確認まで露見しない。失敗55 はまさにこの誤読で、`diag_recent_jquants_runs.py` 等が「配置済 ✅」と記載されながら `git ls-files` では untracked だった事例である。
+受け取り側(次セッションの Web Claude / Claude Code / Hiroyuki)が handoff を読む際、ファイル表に「配置済 ✅」とだけ書かれていると、**無意識に「commit 済 = clean working tree に含まれる」と解釈**する。しかし実体は untracked(disk のみ)であることがあり、この乖離は Phase 1 の現状確認まで露見しない。DB-55 はまさにこの誤読で、`diag_recent_jquants_runs.py` 等が「配置済 ✅」と記載されながら `git ls-files` では untracked だった事例である。
 
 77 件もの untracked が常駐する本リポジトリでは、「ディスクに在る」ことと「commit されている」ことは**頻繁に乖離する**。したがって状態は常に 3 つに分けて明示しなければならない。
 
@@ -71,12 +85,12 @@ handoff 文書(`handoff_db_v*.md`)および引継ぎ manifest で各ファイル
 | 項目 | 値 |
 |---|---|
 | 現 untracked 件数 | 77(db_v0.18 開始時実測・handoff_db_v17.md disk 配置後) |
-| 状態区分の初出 | handoff_db_v14 §6-1(失敗55 対策として導入) |
+| 状態区分の初出 | handoff_db_v14 §6-1(DB-55 対策として導入) |
 | カウント基準明記の連動原則 | db_v0.17 追加原則 #4 |
 
 ## 違反パターン(検出すべき表記)
 
-### Pattern 1: 単一「配置済 ✅」表記(失敗55 の原型)
+### Pattern 1: 単一「配置済 ✅」表記(DB-55 の原型)
 
 ```markdown
 <!-- 違反: disk 存在と commit 状態を混同 -->
@@ -84,7 +98,7 @@ handoff 文書(`handoff_db_v*.md`)および引継ぎ manifest で各ファイル
 |---|---|---|
 | diag_recent_jquants_runs.py | ✅ 配置済 | J-Quants 診断 |
 ```
-→ 受け手は「commit 済」と誤読するが、実体は untracked。失敗55 の直接原因。
+→ 受け手は「commit 済」と誤読するが、実体は untracked。DB-55 の直接原因。
 
 ### Pattern 2: 状態カラムなしのファイル表
 
@@ -121,7 +135,7 @@ secrets ルールは前回 commit したはずなので commit 済。
 
 | ファイル | 状態 | commit | 用途 |
 |---|---|---|---|
-| .claude/rules/process/handoff-disk-tracked-distinction.md | commit 済 | a1b2c3d | 失敗55 対策 |
+| .claude/rules/process/handoff-disk-tracked-distinction.md | commit 済 | a1b2c3d | DB-55 対策 |
 | handoff_db_v18.md | disk のみ | — | 本引継ぎ(disk 運用) |
 
 > 状態は `git status --short` 実測。commit 済は `git ls-files` で確認。
@@ -153,9 +167,9 @@ secrets ルールは前回 commit したはずなので commit 済。
 
 ## 関連過去教訓
 
-### 失敗55 の出自(handoff_db_v14 §4)
+### DB-55 の出自(handoff_db_v14 §4)
 
-失敗55 は db_v0.14 第1ルール Phase 1 で発見。前 Web Claude(db_v0.13 handoff 作成時)が「配置済 ✅」という単一表記で「ディスク存在」と「Git tracked」の 2 状態を区別せず記載した。受け取り側は clean working tree を仮定し、Phase 1 Step 2 の `git status` 実測で初めて乖離(untracked 残存)を発見した。対策として handoff §6 に 3 状態カラムを導入し、以降の handoff(v14〜v17)で運用が定着している。本ルールはその運用を明文化したもの。
+DB-55 は db_v0.14 第1ルール Phase 1 で発見。前 Web Claude(db_v0.13 handoff 作成時)が「配置済 ✅」という単一表記で「ディスク存在」と「Git tracked」の 2 状態を区別せず記載した。受け取り側は clean working tree を仮定し、Phase 1 Step 2 の `git status` 実測で初めて乖離(untracked 残存)を発見した。対策として handoff §6 に 3 状態カラムを導入し、以降の handoff(v14〜v17)で運用が定着している。本ルールはその運用を明文化したもの。
 
 ### untracked 77 件常駐という構造的背景
 
@@ -169,7 +183,7 @@ secrets ルールは前回 commit したはずなので commit 済。
 
 ### 関連ルール
 
-- `process-powershell-absolute-path`(失敗56): 状態を実測する `git status` 実行時も絶対パス / cwd 検算が前提
+- `process-powershell-absolute-path`(DB-56): 状態を実測する `git status` 実行時も絶対パス / cwd 検算が前提
 - `git-explicit-add`(§9-5): untracked 常駐という同一の構造的前提を共有
 - `git-single-responsibility-commit`(§9-2): commit 状態の正確な記載は単一責任 commit の検証可能性を支える
 
