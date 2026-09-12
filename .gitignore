@@ -1,4 +1,4 @@
-﻿credentials/
+credentials/
 *.json
 gcp-sa-key.json
 .env
@@ -6,6 +6,8 @@ __pycache__/
 *.pyc
 *.pyo
 checkpoint*.json
+# second-brain の同期状態ファイル（*.json の除外から復帰させる）
+!.claude/rules/.vault_manifest.json
 *.log
 .DS_Store
 Thumbs.db
