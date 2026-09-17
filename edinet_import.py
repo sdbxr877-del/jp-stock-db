@@ -49,6 +49,10 @@ ELEMENT_MAP = {
     "jpcrp_cor:NetAssetsSummaryOfBusinessResults":             ("equity",     2),
     "jpcrp_cor:NetAssets":                                     ("equity",     1),
     "jpcrp_cor:EquityAttributableToOwnersOfParentIFRSSummaryOfBusinessResults": ("equity", 2),
+    # 有利子負債・段階実装(案3, 2026-09-17 承認): 短期借入金のみ。
+    # 注意: short_term_loans_payable は「短期借入金」単独の値であり、有利子負債全体(長期借入金・社債等含む)ではない。
+    # 長期借入金/社債等はフェーズ2(複数銘柄でのEDINET実測後)で判断し別列として追加する。
+    "jppfs_cor:ShortTermLoansPayable":                         ("short_term_loans_payable", 1),
 }
 
 # R&D費(研究開発費)は候補元素が単一のため ELEMENT_MAP と別立てで厳密一致抽出
@@ -74,7 +78,7 @@ def download_csv_bytes(doc_id):
 
 
 def parse_csv(csv_bytes):
-    result = {k: None for k in ["revenue", "op_profit", "net_income", "eps", "equity", "rd_expenses"]}
+    result = {k: None for k in ["revenue", "op_profit", "net_income", "eps", "equity", "rd_expenses", "short_term_loans_payable"]}
     try:
         df = pd.read_csv(
             io.StringIO(csv_bytes.decode("utf-16", errors="replace")),
@@ -425,6 +429,7 @@ def main():
                 "rd_expenses":  values["rd_expenses"],
                 "cip":          values["cip"],
                 "avg_salary":   values["avg_salary"],
+                "short_term_loans_payable": values["short_term_loans_payable"],
                 "reported_at":  rep_date,
                 "source":       "edinet",
                 "fetched_at":   datetime.now(timezone.utc),
