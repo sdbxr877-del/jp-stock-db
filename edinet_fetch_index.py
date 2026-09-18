@@ -41,6 +41,11 @@ DOC_TYPE_YK    = "120"        # 有価証券報告書
 SEARCH_START = date(2021, 6, 1)    # FY2021 (3月決算) の最初の提出可能日
 SEARCH_END   = date.today()        # 本日まで
 
+# 有価証券報告書の提出期限は決算日から3ヶ月以内 (金融商品取引法)。
+# ※ 実際の期限は土日祝で数日前後する場合があるが、ここでは近似値として扱う
+#   (月単位の判定のため、数日のずれで年度ラベルの判定が変わることは通常ない)。
+FILING_DEADLINE_MONTHS = 3
+
 # APIキー (.env に EDINET_API_KEY があれば使用)
 EDINET_API_KEY = os.environ.get("EDINET_API_KEY", "")
 
@@ -54,6 +59,118 @@ def seccode_to_ticker(seccode):
     if seccode and len(seccode) == 5 and seccode.endswith("0"):
         return seccode[:-1]
     return None
+
+
+def _month_end(year, month):
+    """指定年月の月末日 (date) を返す"""
+    if month == 12:
+        next_first = date(year + 1, 1, 1)
+    else:
+        next_first = date(year, month + 1, 1)
+    return next_first - timedelta(days=1)
+
+
+def _add_months(d, months):
+    """
+    date に月数を加算する。加算前が月末日であれば、加算後の日付も
+    (日数が異なる場合でも) その月の月末日に丸める
+    (例: 2021-02-28 + 3ヶ月 → 2021-05-31)。
+    """
+    total = d.month - 1 + months
+    year  = d.year + total // 12
+    month = total % 12 + 1
+    if d == _month_end(d.year, d.month):
+        return _month_end(year, month)
+    import calendar
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def _fiscal_year_label(year, month):
+    """(2025, 3) → '25/3' (raw.financials の fiscal_year 形式と同じ)"""
+    return f"{str(year)[2:]}/{month}"
+
+
+def infer_settlement_months(entries):
+    """
+    銘柄の既存エントリの fiscal_year ("YY/M") から決算月の集合を推定する。
+    通常は単一の決算月のみが返るはずだが、決算期変更があった銘柄では
+    複数の決算月が混在しうる (その場合、呼び出し側は両方の決算月について
+    期待集合を算出しユニオンを取る想定)。
+    """
+    months = set()
+    for d in entries:
+        fy = d.get("fiscal_year")
+        if fy and "/" in fy:
+            try:
+                months.add(int(fy.split("/")[1]))
+            except ValueError:
+                continue
+    return months
+
+
+def expected_fiscal_year_labels(settlement_month, search_start=None, search_end=None):
+    """
+    指定決算月の銘柄について、検索期間 (search_start〜search_end、省略時は
+    SEARCH_START〜SEARCH_END) 内で「提出済みのはず」の年度ラベル ("YY/M") の
+    集合を機械的に算出する。
+
+    判定方法: 各年の決算日 (settlement_month の月末) から
+    FILING_DEADLINE_MONTHS ヶ月後を提出期限の近似値とし、その提出期限が
+    [search_start, search_end] の範囲に収まる年度を「提出済みのはず」として
+    期待集合に含める。
+    (提出期限が search_start より前 = 検索窓の外で既に提出済みのため対象外。
+     提出期限が search_end より後 = まだ提出期限が来ていないため対象外。)
+    """
+    search_start = search_start or SEARCH_START
+    search_end   = search_end or SEARCH_END
+
+    expected = set()
+    year = search_start.year - 1
+    end_year = search_end.year + 1
+    while year <= end_year:
+        period_end = _month_end(year, settlement_month)
+        deadline   = _add_months(period_end, FILING_DEADLINE_MONTHS)
+        if search_start <= deadline <= search_end:
+            expected.add(_fiscal_year_label(year, settlement_month))
+        year += 1
+    return expected
+
+
+def tickers_needing_more_docs(target_tickers, docs):
+    """
+    対象銘柄のうち、検索期間 (SEARCH_START〜SEARCH_END) 内で捕捉されている
+    はずの正確な年度ラベル ("YY/M") の集合と、実際に保持している fiscal_year
+    ラベルの集合を比較し、期待集合が実際の集合の部分集合になっていない
+    (=期待される年度ラベルのうち欠けているものがある) 銘柄を返す。
+
+    銘柄ごとの決算月は、その銘柄の既存エントリの fiscal_year から推定する。
+    docs に1件もエントリが無い銘柄は決算月が不明なため機械的に期待集合を
+    算出できず、無条件で「要取得」として扱う。
+    docs は {ticker: [{"fiscal_year": ..., ...}, ...]} 形式 (load_index() 参照)。
+    """
+    remaining = set()
+    for t in target_tickers:
+        entries = docs.get(t, [])
+        if not entries:
+            remaining.add(t)
+            continue
+
+        actual_fy = {d.get("fiscal_year") for d in entries if d.get("fiscal_year")}
+
+        settlement_months = infer_settlement_months(entries)
+        if not settlement_months:
+            remaining.add(t)
+            continue
+
+        expected = set()
+        for sm in settlement_months:
+            expected |= expected_fiscal_year_labels(sm)
+
+        if not expected.issubset(actual_fy):
+            remaining.add(t)
+
+    return remaining
 
 
 def period_end_to_fiscal_year(period_end):
@@ -80,7 +197,7 @@ def load_targets():
 
 def load_index():
     if os.path.exists(INDEX_FILE):
-        with open(INDEX_FILE) as f:
+        with open(INDEX_FILE, encoding="utf-8") as f:
             return json.load(f)
     return {"docs": {}, "last_searched_date": None, "search_end": None}
 
@@ -185,7 +302,7 @@ def main():
     while current <= end:
         # 月初のみ進捗表示
         if current.day == 1 or current == start:
-            remaining = target_set - set(docs.keys())
+            remaining = tickers_needing_more_docs(target_set, docs)
             pct = (current - start).days / max(total, 1) * 100
             print(f"  [{current}] {pct:4.1f}%  残り対象銘柄: {len(remaining)}")
             if not remaining:
